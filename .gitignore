@@ -1,0 +1,16 @@
+.venv/
+runtime/
+.updates/
+.update-*
+__pycache__/
+*.pyc
+*.zip
+dist/
+assets/
+config/faturamento.toml
+tests/fixtures/
+*.mp4
+*.jpg
+*.png
+.env
+.env.*

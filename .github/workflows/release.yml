@@ -1,0 +1,26 @@
+name: Publicar atualizacao do bot
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validar codigo e versao
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python -m compileall -q faturamento_bot
+          python -c "import os; from faturamento_bot import __version__; assert os.environ['RELEASE_TAG'] == 'v' + __version__.split('-')[0]"
+          python -m unittest discover -s tests -p test_updater.py -q
+      - run: python tools/build_update.py
+      - name: Publicar pacote e checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/etiquetas-update.zip dist/etiquetas-update.sha256 --title "$GITHUB_REF_NAME" --generate-notes
