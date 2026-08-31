@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import re
 import time
 import tomllib
+import unicodedata
 
 from .config import AppConfig
-from .windows import virtual_screen_metrics
+from .windows import foreground_window_info, virtual_screen_metrics
 
 
 @dataclass(frozen=True)
@@ -91,8 +93,49 @@ class ReferenceScreenMatcher:
             if value.get("canonical_screen") == screen_id
         ]
         matches = [self._match_single(key, features) for key in candidates]
-        return max((item for item in matches if item is not None),
-                   key=lambda item: item.confidence, default=None)
+        visual = max((item for item in matches if item is not None),
+                     key=lambda item: item.confidence, default=None)
+        if visual is not None:
+            return visual
+        if screen_id == "ecommerce_manager":
+            return self._manager_geometry_match()
+        return None
+
+    def _manager_geometry_match(self) -> ScreenMatch | None:
+        """Recognize the manager by its Windows identity, independent of skin colors."""
+        import numpy as np
+
+        try:
+            window, class_name = foreground_window_info()
+        except RuntimeError:
+            return None
+        title = "".join(
+            char for char in unicodedata.normalize("NFKD", window.title)
+            if not unicodedata.combining(char)
+        ).casefold().strip()
+        manager_title = re.match(
+            r"^(?:\[0682\]\s*)?gerenciador de impressoes d[eo] e-commerce\s*$",
+            title,
+        )
+        process_pattern = self.config.target_window.get("process_path_regex")
+        if (class_name == "#32770" or not manager_title
+                or not process_pattern or not re.search(process_pattern, window.process_path)):
+            return None
+        if window.width < 900 or window.height < 600:
+            return None
+
+        # The SYSEMP keeps the manager's logical canvas at a 16:9 proportion.
+        # Use window width so the reserved taskbar area does not compress Y.
+        scale = window.width / 1920.0
+        if not 0.55 <= scale <= 1.80:
+            return None
+        virtual = virtual_screen_metrics()
+        homography = np.asarray([
+            [scale, 0.0, float(window.left - virtual.left)],
+            [0.0, scale, float(window.top - virtual.top)],
+            [0.0, 0.0, 1.0],
+        ])
+        return ScreenMatch("ecommerce_manager", homography, 1.0, 0)
 
     def _match_single(self, screen_id: str, desktop_features) -> ScreenMatch | None:
         import cv2
@@ -215,6 +258,11 @@ class ReferenceScreenMatcher:
         )
 
     def detect_visible_screen(self) -> ScreenMatch | None:
+        # Window identity is stronger than skin-dependent image similarity and
+        # prevents the manager from being mistaken for the e-Commerce home.
+        manager = self._manager_geometry_match()
+        if manager is not None:
+            return manager
         desktop_features = self._desktop_features()
         best: ScreenMatch | None = None
         for screen_id in self.screen_ids():
