@@ -54,7 +54,10 @@ class FakeGrid:
         return self.confirm
 
     def next_page(self, channel, tail):
+        if self.page + 1 >= len(self.pages):
+            return False
         self.page += 1
+        return True
 
 
 class BatchPrintTests(unittest.TestCase):
@@ -94,12 +97,10 @@ class BatchPrintTests(unittest.TestCase):
         self.assertEqual(len(grid.sent), 1)
         self.assertTrue(self.journal.attempted(grid.sent[0]))
 
-    def test_paging_stall_is_not_silent_completion(self):
-        grid = FakeGrid([[(1, False, False)], [(2, True, False)]])
-        grid.next_page = Mock()
-        with self.assertRaisesRegex(RuntimeError, 'repetiu uma página'):
-            self.run_store(grid)
-        self.assertEqual(grid.sent, [])
+    def test_last_page_without_movement_completes_scan(self):
+        grid = FakeGrid([[(1, True, False)]])
+        self.assertEqual(self.run_store(grid), 1)
+        self.assertEqual([order.invoice for order in grid.sent], ['1'])
 
     def test_empty_store_sends_nothing(self):
         grid = FakeGrid([])

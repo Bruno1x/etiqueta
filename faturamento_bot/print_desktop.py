@@ -244,15 +244,25 @@ class DirectPrintDesktop:
         self.guard()
 
     def start_pages(self, channel):
-        """Remember the last record, then return to the first record."""
+        """Focus the grid and return to its first record.
+
+        Do not probe past the bottom edge. Some SYSEMP grid themes lose their
+        visual row state when Down is sent after Ctrl+End. Page traversal can
+        identify completion safely when PageDown no longer changes the tail.
+        """
         self.preflight()
         _, rows = self.snapshot()
         if not rows:
             return None
         self.read_cell(self.column_x('channel'), rows[0])  # Focus the grid before keyboard navigation.
-        last = self.seek_grid_edge(channel, bottom=True)
-        self.seek_grid_edge(channel, bottom=False)
-        return last
+        self.guard()
+        pyautogui.hotkey('ctrl', 'home')
+        time.sleep(1.2)
+        _, rows = self.snapshot()
+        if not rows:
+            raise RuntimeError('A grade desapareceu ao retornar para a primeira página.')
+        self.page_key(rows[0], channel)
+        return True
 
     def seek_grid_edge(self, channel, *, bottom):
         """Check record identity at an edge, not the theme's selection color.
@@ -289,8 +299,9 @@ class DirectPrintDesktop:
         self.read_cell(self.column_x('channel'), rows[-1])
         self.move_grid('pagedown')
         _, rows = self.snapshot()
-        if not rows or self.page_key(rows[-1], channel) == previous_tail:
-            raise RuntimeError('A grade não avançou até o final identificado. Ronda interrompida, sem assumir conclusão.')
+        if not rows:
+            raise RuntimeError('A grade desapareceu após Page Down.')
+        return self.page_key(rows[-1], channel) != previous_tail
 
     def verify_candidate(self, row, order):
         if self.identity(row) != order:
@@ -354,8 +365,7 @@ def run_direct_print_test(runner, routing_confirmed, expected_channel=None):
 
 def _scan_store_once(backend, journal, channel, allowed_channels):
     """Drain every page once and return how many orders were confirmed."""
-    last = backend.start_pages(channel)
-    if last is None:
+    if backend.start_pages(channel) is None:
         return 0
     count = 0
     seen_pages = set()
@@ -391,9 +401,8 @@ def _scan_store_once(backend, journal, channel, allowed_channels):
             raise RuntimeError('Grade desapareceu após a impressão.')
         if backend.page_key(current[-1], channel) != tail:
             raise RuntimeError('A ordem da grade mudou durante a impressão; confira os resultados.')
-        if tail == last:
+        if not backend.next_page(channel, tail):
             return count
-        backend.next_page(channel, tail)
     raise RuntimeError('Limite de páginas atingido; ronda interrompida.')
 
 
