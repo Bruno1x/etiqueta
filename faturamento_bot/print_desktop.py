@@ -106,7 +106,15 @@ class DirectPrintDesktop:
         self.window = active
         self.runner.log.info('Janela de impressão validada: %s; classe %s; handle %s', active.title, class_name, active.handle)
         self.guard()
-        self.layout = self.resolve_layout(ImageGrab.grab(all_screens=True))
+        image = ImageGrab.grab(all_screens=True)
+        try:
+            self.layout = self.calibrated_layout()
+            self.expanded_grid = True
+            self.runner.log.info('Geometria calibrada bloqueada para toda a ronda.')
+        except Exception:
+            self.layout = self.reader.layout(image)
+            self.expanded_grid = False
+            self.runner.log.info('Geometria visual bloqueada para toda a ronda.')
         self.check_target(self.layout.point(0, 0))
         self.check_target(self.layout.point(1134, 20))
 
@@ -128,7 +136,10 @@ class DirectPrintDesktop:
     def snapshot(self):
         self.guard()
         image = ImageGrab.grab(all_screens=True)
-        layout = self.resolve_layout(image)
+        # Never alternate geometry providers during one run. Theme/selection
+        # changes can make both providers available with slightly different
+        # origins, which is not an actual movement of the SYSEMP grid.
+        layout = self.calibrated_layout() if self.expanded_grid else self.reader.layout(image)
         self.validate_layout(layout)
         return image, self.reader.rows(image, layout, expanded=self.expanded_grid)
 
@@ -197,7 +208,9 @@ class DirectPrintDesktop:
         self.guard()
         # The title may be the ERP parent while the manager is an MDI child.
         # Require the actual grid, not a substring in the root window title.
-        self.validate_layout(self.resolve_layout(ImageGrab.grab(all_screens=True)))
+        layout = (self.calibrated_layout() if self.expanded_grid
+                  else self.reader.layout(ImageGrab.grab(all_screens=True)))
+        self.validate_layout(layout)
         self.check_target(point)
         virtual = virtual_screen_metrics()
         pyautogui.click(point[0] + virtual.left, point[1] + virtual.top)
