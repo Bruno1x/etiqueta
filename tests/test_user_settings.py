@@ -2,7 +2,14 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from faturamento_bot.user_settings import load_interval, save_interval, validate_interval
+from faturamento_bot.user_settings import (
+    load_channels,
+    load_interval,
+    save_channels,
+    save_interval,
+    validate_channels,
+    validate_interval,
+)
 
 
 class UserSettingsTests(unittest.TestCase):
@@ -27,3 +34,26 @@ class UserSettingsTests(unittest.TestCase):
             path.parent.mkdir(parents=True)
             path.write_text('{broken')
             self.assertEqual(load_interval(root, 15), 15)
+
+    def test_channels_default_to_all_allowed(self):
+        with TemporaryDirectory() as directory:
+            allowed = ('ML CENTRAL', 'ML STORE', 'ML UNIVERSO')
+            self.assertEqual(load_channels(Path(directory), allowed), allowed)
+
+    def test_store_selection_and_interval_are_preserved_together(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            allowed = ('ML CENTRAL', 'ML STORE', 'ML UNIVERSO')
+            save_interval(root, 12)
+            save_channels(root, ('ML CENTRAL',), allowed)
+            self.assertEqual(load_interval(root, 1), 12)
+            self.assertEqual(load_channels(root, allowed), ('ML CENTRAL',))
+            save_interval(root, 25)
+            self.assertEqual(load_channels(root, allowed), ('ML CENTRAL',))
+
+    def test_channels_reject_empty_or_unknown_selection(self):
+        allowed = ('ML CENTRAL', 'ML STORE')
+        with self.assertRaises(ValueError):
+            validate_channels((), allowed)
+        with self.assertRaises(ValueError):
+            validate_channels(('ML CENTRAL', 'NUVEM ATACADO'), allowed)

@@ -3,6 +3,8 @@ from __future__ import annotations
 import queue
 import threading
 import time
+from copy import deepcopy
+from dataclasses import replace
 from . import __version__
 
 from .calibration import AnchorSpec, CalibrationManager, CalibrationResult
@@ -10,7 +12,7 @@ from .config import AppConfig, load_config
 from .runner import OperationCancelled, RunMode, WorkflowRunner, configure_logging
 from .printing import find_required_printer, installed_printer_names
 from .windows import enable_dpi_awareness, screen_metrics, virtual_screen_metrics
-from .user_settings import load_interval, save_interval
+from .user_settings import load_channels, load_interval, save_channels, save_interval
 
 enable_dpi_awareness()
 
@@ -29,11 +31,13 @@ class EtiquetasApp:
         self._task_minimized = False
         self.interval_minutes = load_interval(
             config.root, max(1, int(config.patrol['interval_seconds']) // 60))
+        self.available_channels = tuple(config.processing['label_channels'])
+        self.selected_channels = load_channels(config.root, self.available_channels)
 
         self.root = tk.Tk()
         self.root.title(f"Etiquetas Bot — SYSEMP — {__version__}")
-        self.root.geometry("920x640")
-        self.root.minsize(820, 560)
+        self.root.geometry("920x720")
+        self.root.minsize(820, 650)
         self.root.configure(bg="#0f1923")
         self._build_ui()
         self.root.after(120, self._consume_events)
@@ -103,6 +107,22 @@ class EtiquetasApp:
         ttk.Label(timer, text='minuto(s) do término').pack(side='left')
         ttk.Button(timer, text='SALVAR INTERVALO', command=self.save_patrol_interval).pack(side='right')
 
+        stores = ttk.LabelFrame(shell, text='Lojas da ronda', padding=(10, 7))
+        stores.pack(fill='x', pady=(0, 8))
+        self.channel_vars: dict[str, tk.BooleanVar] = {}
+        for index, channel in enumerate(self.available_channels):
+            variable = tk.BooleanVar(value=channel in self.selected_channels)
+            self.channel_vars[channel] = variable
+            ttk.Checkbutton(stores, text=channel, variable=variable).grid(
+                row=index // 4, column=index % 4, padx=(0, 12), pady=2, sticky='w')
+        for column in range(4):
+            stores.columnconfigure(column, weight=1)
+        store_actions = ttk.Frame(stores)
+        store_actions.grid(row=2, column=0, columnspan=4, pady=(6, 0), sticky='ew')
+        ttk.Button(store_actions, text='SOMENTE ML CENTRAL', command=self.select_central_only).pack(side='left')
+        ttk.Button(store_actions, text='SELECIONAR TODAS', command=self.select_all_channels).pack(side='left', padx=8)
+        ttk.Button(store_actions, text='SALVAR LOJAS', command=self.save_store_selection).pack(side='right')
+
         self.live_var = tk.BooleanVar(value=True)
         self.advanced_visible = tk.BooleanVar(value=False)
         ttk.Checkbutton(shell, text='Mostrar ferramentas avançadas',
@@ -154,6 +174,47 @@ class EtiquetasApp:
         if notify:
             messagebox.showinfo('Intervalo salvo', f'Nova ronda após {self.interval_minutes} minuto(s).')
         return self.interval_minutes
+
+    def _checked_channels(self):
+        return tuple(
+            channel for channel in self.available_channels
+            if self.channel_vars[channel].get()
+        )
+
+    def select_central_only(self):
+        for channel, variable in self.channel_vars.items():
+            variable.set(channel == 'ML CENTRAL')
+
+    def select_all_channels(self):
+        for variable in self.channel_vars.values():
+            variable.set(True)
+
+    def save_store_selection(self, *, notify=True):
+        try:
+            self.selected_channels = save_channels(
+                self.config.root,
+                self._checked_channels(),
+                self.available_channels,
+            )
+        except (OSError, ValueError) as error:
+            messagebox.showerror('Lojas inválidas', str(error))
+            return None
+        names = ', '.join(self.selected_channels)
+        self._append_log(f'Lojas salvas para a ronda: {names}.')
+        if notify:
+            messagebox.showinfo('Lojas salvas', f'A ronda pesquisará somente: {names}.')
+        return self.selected_channels
+
+    def _config_for_channels(self, channels):
+        raw = deepcopy(self.config.raw)
+        raw['processing']['label_channels'] = list(channels)
+        return replace(self.config, raw=raw)
+
+    def _selected_run_config(self):
+        channels = self.save_store_selection(notify=False)
+        if channels is None:
+            return None
+        return self._config_for_channels(channels)
 
     def _append_log(self, text: str) -> None:
         self.log.configure(state="normal")
@@ -254,13 +315,18 @@ class EtiquetasApp:
         interval_minutes = self.save_patrol_interval(notify=False)
         if interval_minutes is None:
             return
+        run_config = self._selected_run_config()
+        if run_config is None:
+            return
+        channels = tuple(run_config.processing['label_channels'])
         live = True
-        physical = live and not self.config.raw['printing']['test_without_physical_print']
+        physical = live and not run_config.raw['printing']['test_without_physical_print']
         if physical:
-            required = self.config.raw['printing']['printer_name_contains']
+            required = run_config.raw['printing']['printer_name_contains']
             if not messagebox.askokcancel(
                 'Iniciar ronda de impressão real',
-                f'A ronda imprimirá os pedidos verdes e não impressos das oito lojas ML, um por vez.\n\n'
+                f'A ronda imprimirá os pedidos verdes e não impressos de {len(channels)} loja(s), um por vez:\n'
+                f'{", ".join(channels)}\n\n'
                 f'Confirme Etiqueta + Documentos configurado no SYSEMP para {required}: transporte + DANFE, 100 × 150 mm cada, uma cópia.\n\n'
                 f'Nova passagem após {interval_minutes} minuto(s) do término. '
                 'Deixe a cópia da célula em Sim e não use este computador durante a execução. '
@@ -273,16 +339,16 @@ class EtiquetasApp:
 
         def patrol() -> str:
             runner = WorkflowRunner(
-                self.config,
-                RunMode.for_patrol(self.config, live),
+                run_config,
+                RunMode.for_patrol(run_config, live),
                 stop_event=self.stop_event,
             )
             runner.print_routing_confirmed = physical
             while not self.stop_event.is_set():
-                for name in self.config.patrol["workflows"]:
+                for name in run_config.patrol["workflows"]:
                     if self.stop_event.is_set():
                         break
-                    runner.run(self.config.workflows[name])
+                    runner.run(run_config.workflows[name])
                 interval_seconds = interval_minutes * 60
                 runner.log.info('Aguardando %s minuto(s) para a próxima ronda.', interval_minutes)
                 if self.stop_event.wait(interval_seconds):
@@ -299,9 +365,15 @@ class EtiquetasApp:
             )
             return
 
+        run_config = self._selected_run_config()
+        if run_config is None:
+            return
+        channels = tuple(run_config.processing['label_channels'])
+
         if not messagebox.askokcancel(
             "Testar no SYSEMP",
-            "O teste fará cliques reais no gerenciador de e-commerce e preencherá "
+            f"O teste fará cliques reais em {len(channels)} loja(s): {', '.join(channels)}. "
+            "Ele preencherá "
             "os filtros. Nenhuma etiqueta será impressa. Continuar?",
         ):
             return
@@ -310,13 +382,13 @@ class EtiquetasApp:
 
         def execute_test() -> str:
             runner = WorkflowRunner(
-                self.config,
+                run_config,
                 RunMode(live=True, confirm_live=True, safe_test=True),
                 stop_event=self.stop_event,
             )
             runner.test_ecommerce_channel_cycle()
             return (
-                "Filtros das oito lojas ML percorridos, sem imprimir. "
+                f"Filtros de {len(channels)} loja(s) percorridos, sem imprimir. "
                 "A grade de etiquetas ainda não foi lida automaticamente."
             )
 
@@ -330,10 +402,14 @@ class EtiquetasApp:
         if not self.live_var.get():
             messagebox.showwarning('Permissão necessária', 'Marque Permitir cliques reais para fazer uma impressão física.')
             return
-        required = self.config.raw['printing']['printer_name_contains']
+        run_config = self._selected_run_config()
+        if run_config is None:
+            return
+        channels = tuple(run_config.processing['label_channels'])
+        required = run_config.raw['printing']['printer_name_contains']
         if not messagebox.askokcancel(
             'Impressão física de um pedido',
-            f'O bot seguirá o mesmo caminho do teste: limpar Empresa, informar datas, selecionar e pesquisar as lojas ML.\n\n'
+            f'O bot seguirá o mesmo caminho do teste para: {", ".join(channels)}.\n\n'
             f'Confirme que Etiqueta + Documentos está configurado NO SYSEMP para envio direto à {required}, transporte + DANFE de 100 × 150 mm, uma cópia.\n\n'
             'O bot não altera o destino interno do SYSEMP. A cópia da célula ao clicar deve estar em Sim.\n\n'
             'Será enviado apenas um pedido verde e não impresso da loja pesquisada. Lojas sem candidato visível serão desmarcadas antes da próxima. Não use mouse/teclado durante o teste. Confirmar envio real?',
@@ -342,7 +418,7 @@ class EtiquetasApp:
         self._append_log('Teste real autorizado: um pedido; sem repetição automática.')
         def execute():
             from .print_desktop import run_print_test_flow
-            runner = WorkflowRunner(self.config, RunMode(live=True, confirm_live=True, safe_test=True), stop_event=self.stop_event)
+            runner = WorkflowRunner(run_config, RunMode(live=True, confirm_live=True, safe_test=True), stop_event=self.stop_event)
             return run_print_test_flow(runner, routing_confirmed=True)
         self._background(execute, 'Teste de impressão real', minimize=True)
 

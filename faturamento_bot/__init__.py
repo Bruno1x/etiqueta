@@ -1,3 +1,3 @@
 """Automação segura de etiquetas do Mercado Livre no SYSEMP."""
 
-__version__ = "0.5.9-theme-geometry"
+__version__ = "0.6.0-store-selector"
