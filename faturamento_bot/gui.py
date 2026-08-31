@@ -29,7 +29,7 @@ class EtiquetasApp:
 
         self.root = tk.Tk()
         self.root.title(f"Etiquetas Bot — SYSEMP — {__version__}")
-        self.root.geometry("920x700")
+        self.root.geometry("920x640")
         self.root.minsize(820, 560)
         self.root.configure(bg="#0f1923")
         self._build_ui()
@@ -70,62 +70,45 @@ class EtiquetasApp:
         )
 
         buttons = ttk.Frame(shell)
-        buttons.pack(fill="x", pady=(0, 14))
+        buttons.pack(fill="x", pady=(0, 10))
         ttk.Button(
             buttons,
-            text="Auto calibrar",
+            text="INICIAR RONDA DE IMPRESSÃO",
             style="Accent.TButton",
-            command=self.auto_calibrate,
-        ).grid(row=0, column=0, padx=(0, 8), pady=4, sticky="ew")
-        ttk.Button(
-            buttons,
-            text="Calibração manual (contingência)",
-            command=self.guided_calibration,
-        ).grid(row=0, column=1, padx=8, pady=4, sticky="ew")
-        ttk.Button(
-            buttons,
-            text="Testar pontos",
-            command=self.test_points,
-        ).grid(row=0, column=2, padx=8, pady=4, sticky="ew")
-        ttk.Button(
-            buttons,
-            text="Iniciar ronda (conforme configuração)",
             command=self.start_patrol,
-        ).grid(row=1, column=0, padx=(0, 8), pady=4, sticky="ew")
+        ).grid(row=0, column=0, columnspan=2, padx=(0, 8), pady=4, sticky="ew")
         ttk.Button(
             buttons,
-            text="Parar",
+            text="PARAR",
             style="Danger.TButton",
             command=self.stop_patrol,
-        ).grid(row=1, column=1, padx=8, pady=4, sticky="ew")
-        ttk.Button(buttons, text="Atualizar status", command=self._refresh_environment).grid(
-            row=1, column=2, padx=8, pady=4, sticky="ew"
-        )
-        ttk.Button(
-            buttons,
-            text="Testar etiquetas no SYSEMP (sem imprimir)",
-            style="Accent.TButton",
-            command=self.test_sysemp_flow,
-        ).grid(row=2, column=0, columnspan=3, padx=(0, 8), pady=(10, 4), sticky="ew")
-        ttk.Button(
-            buttons, text="IMPRIMIR 1 PEDIDO NA ZEBRA — TESTE REAL",
-            style="Danger.TButton", command=self.print_one_order,
-        ).grid(row=3, column=0, columnspan=3, padx=(0, 8), pady=4, sticky="ew")
-        ttk.Button(buttons, text='Verificar atualizações', command=self.check_updates).grid(
-            row=4, column=0, columnspan=3, padx=(0, 8), pady=4, sticky='ew')
+        ).grid(row=0, column=2, padx=8, pady=4, sticky="ew")
+        ttk.Button(buttons, text='ATUALIZAR SISTEMA', command=self.check_updates).grid(
+            row=1, column=0, columnspan=3, padx=(0, 8), pady=4, sticky='ew')
         for column in range(3):
             buttons.columnconfigure(column, weight=1)
 
-        options = ttk.Frame(shell)
-        options.pack(fill="x", pady=(0, 12))
-        self.live_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(
-            options,
-            text="Permitir cliques reais (também exige allow_live=true na configuração)",
-            variable=self.live_var,
-        ).pack(anchor="w")
+        self.live_var = tk.BooleanVar(value=True)
+        self.advanced_visible = tk.BooleanVar(value=False)
+        ttk.Checkbutton(shell, text='Mostrar ferramentas avançadas',
+                        variable=self.advanced_visible, command=self._toggle_advanced).pack(anchor='w', pady=(0, 8))
+        self.advanced_frame = ttk.Frame(shell)
+        advanced_buttons = (
+            ('Auto calibrar', self.auto_calibrate),
+            ('Calibração manual', self.guided_calibration),
+            ('Testar pontos', self.test_points),
+            ('Teste sem imprimir', self.test_sysemp_flow),
+            ('Imprimir somente 1 pedido', self.print_one_order),
+            ('Atualizar status', self._refresh_environment),
+        )
+        for index, (label, command) in enumerate(advanced_buttons):
+            ttk.Button(self.advanced_frame, text=label, command=command).grid(
+                row=index // 3, column=index % 3, padx=4, pady=4, sticky='ew')
+        for column in range(3):
+            self.advanced_frame.columnconfigure(column, weight=1)
 
-        ttk.Label(shell, text="Atividade").pack(anchor="w", pady=(4, 6))
+        self.activity_label = ttk.Label(shell, text="Atividade")
+        self.activity_label.pack(anchor="w", pady=(4, 6))
         self.log = tk.Text(
             shell,
             height=16,
@@ -139,6 +122,12 @@ class EtiquetasApp:
             state="disabled",
         )
         self.log.pack(fill="both", expand=True)
+
+    def _toggle_advanced(self):
+        if self.advanced_visible.get():
+            self.advanced_frame.pack(fill='x', pady=(0, 10), before=self.activity_label)
+        else:
+            self.advanced_frame.pack_forget()
 
     def _append_log(self, text: str) -> None:
         self.log.configure(state="normal")
@@ -236,7 +225,7 @@ class EtiquetasApp:
         GuidedCalibrationDialog(self, specs)
 
     def start_patrol(self) -> None:
-        live = self.live_var.get()
+        live = True
         physical = live and not self.config.raw['printing']['test_without_physical_print']
         if physical:
             required = self.config.raw['printing']['printer_name_contains']
