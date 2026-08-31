@@ -14,6 +14,7 @@ from .reference import ReferenceScreenMatcher
 from .windows import (
     activate_and_maximize,
     find_unique_window,
+    restore_taskbars,
     screen_metrics,
     virtual_screen_metrics,
 )
@@ -256,6 +257,12 @@ class CalibrationManager:
         return LocatedAnchor(name, x, y, score, width, height)
 
     def auto_calibrate(self) -> CalibrationResult:
+        try:
+            return self._auto_calibrate_impl()
+        finally:
+            restore_taskbars()
+
+    def _auto_calibrate_impl(self) -> CalibrationResult:
         window = self._target_window()
         if self.config.target_window["maximize_before_run"]:
             activate_and_maximize(window)

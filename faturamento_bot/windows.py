@@ -8,6 +8,7 @@ import re
 
 PROCESS_PER_MONITOR_DPI_AWARE = -4
 SW_MAXIMIZE = 3
+SW_SHOW = 5
 WNDENUMPROC = WINFUNCTYPE(BOOL, HWND, LPARAM)
 
 windll.kernel32.OpenProcess.argtypes = [DWORD, BOOL, DWORD]
@@ -40,6 +41,8 @@ windll.user32.SetForegroundWindow.argtypes = [HWND]
 windll.user32.SetForegroundWindow.restype = BOOL
 windll.user32.ShowWindow.argtypes = [HWND, c_int]
 windll.user32.ShowWindow.restype = BOOL
+windll.user32.IsZoomed.argtypes = [HWND]
+windll.user32.IsZoomed.restype = BOOL
 windll.user32.EnumWindows.argtypes = [WNDENUMPROC, LPARAM]
 windll.user32.EnumWindows.restype = BOOL
 
@@ -208,9 +211,28 @@ def find_unique_window(
 
 
 def activate_and_maximize(window: WindowInfo) -> None:
-    windll.user32.ShowWindow(window.handle, SW_MAXIMIZE)
+    # Reenviar SW_MAXIMIZE para uma janela já maximizada pode deixar o Shell
+    # sem redesenhar a barra de tarefas em alguns desktops com múltiplos DPI.
+    if not windll.user32.IsZoomed(window.handle):
+        windll.user32.ShowWindow(window.handle, SW_MAXIMIZE)
     if not windll.user32.SetForegroundWindow(window.handle):
         raise RuntimeError(f"Não foi possível ativar a janela {window.title!r}.")
+
+
+def restore_taskbars() -> None:
+    """Torna visíveis e redesenha as barras do Explorer sem roubar o foco."""
+    redraw_flags = 0x0001 | 0x0080 | 0x0100  # INVALIDATE | ALLCHILDREN | UPDATENOW
+
+    @WNDENUMPROC
+    def callback(handle: int, _parameter: int) -> bool:
+        class_buffer = __import__("ctypes").create_unicode_buffer(256)
+        windll.user32.GetClassNameW(handle, class_buffer, len(class_buffer))
+        if class_buffer.value in {"Shell_TrayWnd", "Shell_SecondaryTrayWnd"}:
+            windll.user32.ShowWindow(handle, SW_SHOW)
+            windll.user32.RedrawWindow(handle, None, 0, redraw_flags)
+        return True
+
+    windll.user32.EnumWindows(callback, 0)
 
 
 def foreground_title() -> str:
