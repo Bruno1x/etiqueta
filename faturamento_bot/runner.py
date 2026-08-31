@@ -538,6 +538,45 @@ class WorkflowRunner:
             pyautogui.press("tab")
         self.log.info("Período de entrega informado: %s até %s", start, end)
 
+    def _wait_ecommerce_stable(self, *, timeout: float = 45.0) -> None:
+        """Wait until the result area stops changing after a SYSEMP action."""
+        import numpy as np
+        from PIL import ImageGrab
+
+        deadline = time.monotonic() + timeout
+        previous = None
+        stable_samples = 0
+        while time.monotonic() < deadline:
+            self._check_cancelled()
+            matched = self.reference_matcher.match('ecommerce_manager')
+            if matched is None:
+                previous = None
+                stable_samples = 0
+                time.sleep(.6)
+                continue
+            top_left = self.reference_matcher.map_point(matched, 0, 405)
+            bottom_right = self.reference_matcher.map_point(matched, 1134, 900)
+            if top_left is None or bottom_right is None:
+                time.sleep(.6)
+                continue
+            image = ImageGrab.grab(
+                bbox=(top_left.x, top_left.y, bottom_right.x, bottom_right.y),
+                all_screens=True,
+            ).convert('L').resize((96, 42))
+            sample = np.asarray(image, dtype=np.int16)
+            if previous is not None:
+                mean_change = float(np.abs(sample - previous).mean())
+                stable_samples = stable_samples + 1 if mean_change <= 1.2 else 0
+                if stable_samples >= 3:
+                    self.log.info('Grade do e-commerce estável; processamento liberado.')
+                    return
+            previous = sample
+            time.sleep(.7)
+        raise SafetyError(
+            'O SYSEMP continuou carregando por 45 segundos. '
+            'A loja foi mantida selecionada e a ronda foi interrompida.'
+        )
+
     def test_ecommerce_channel_cycle(self, after_search=None):
         if not self.mode.live:
             raise SafetyError("O teste de navegação exige autorização para cliques.")
@@ -568,6 +607,8 @@ class WorkflowRunner:
             self.log.info("Loja e-commerce %d/%d: %s", index, len(channels), channel)
             anchor = self._channel_anchor(channel)
             selection_attempted = False
+            search_started = False
+            search_ready = False
             try:
                 selection_attempted = True
                 self._set_checklist_value(
@@ -575,6 +616,9 @@ class WorkflowRunner:
                     selected=True, force_click=True
                 )
                 self._click_reference("ecommerce_manager", 40, 50, 2.0)
+                search_started = True
+                self._wait_ecommerce_stable()
+                search_ready = True
                 if after_search is not None:
                     result = after_search(channel)
                     if result is not None:
@@ -583,7 +627,9 @@ class WorkflowRunner:
                 if after_search is None:
                     self.log.info('Teste seguro de %s concluído; nenhuma impressão foi iniciada.', channel)
             finally:
-                if selection_attempted:
+                if selection_attempted and (not search_started or search_ready):
+                    if search_started and search_ready:
+                        self._wait_ecommerce_stable()
                     self._set_checklist_value(
                         "ecommerce_manager", 450, 211, anchor, channel, selected=False
                     )

@@ -22,6 +22,7 @@ class SingleStoreSelectionTests(unittest.TestCase):
         runner._check_cancelled = Mock()
         runner._clear_company_checkbox = Mock()
         runner._prepare_label_dates = Mock()
+        runner._wait_ecommerce_stable = Mock()
         runner._set_checklist_value = Mock()
         runner._click_reference = Mock()
         return runner

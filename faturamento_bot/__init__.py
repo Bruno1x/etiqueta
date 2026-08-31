@@ -1,3 +1,3 @@
 """Automação segura de etiquetas do Mercado Livre no SYSEMP."""
 
-__version__ = "0.6.5-safe-grid-pages"
+__version__ = "0.6.6-wait-grid"
