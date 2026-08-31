@@ -184,7 +184,12 @@ class CalibrationManager:
             reference = self.config.root / "assets/reference_screens/ecommerce_channels_light.png"
             if reference.exists():
                 pixels = np.asarray(ImageGrab.grab(bbox=region, all_screens=True).convert("RGB"))
-                found = locate_light_channel(reference, Path(name).stem, pixels)
+                found = locate_light_channel(
+                    reference,
+                    Path(name).stem,
+                    pixels,
+                    min_score=min_score if min_score is not None else .80,
+                )
                 if found is not None:
                     score, left, top, width, height = found
                     return LocatedAnchor(name, region[0] + left + width // 2,

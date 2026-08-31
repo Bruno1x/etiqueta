@@ -270,7 +270,10 @@ class WorkflowRunner:
         direction_down = True
         unchanged = 0
         previous_view = None
-        for _attempt in range(140):
+        # The checklist contains far fewer rows than this. The hard bound is a
+        # safety guard: theme animations must never create an endless scroll.
+        max_attempts = 56
+        for _attempt in range(max_attempts):
             self._check_cancelled()
             item = self.calibration.locate_anchor(
                 anchor, region=region, min_score=0.80
@@ -306,7 +309,16 @@ class WorkflowRunner:
                 return
             from PIL import ImageGrab
 
-            view = ImageGrab.grab(bbox=region, all_screens=True).convert("L").tobytes()
+            view_image = ImageGrab.grab(bbox=region, all_screens=True).convert("L")
+            # Ignore the scrollbar and quantize the list. Its moving thumb,
+            # hover border and antialiasing otherwise prevent end detection.
+            content_width = max(1, view_image.width - 36)
+            view_image = view_image.crop((0, 0, content_width, view_image.height))
+            signature_width = min(96, view_image.width)
+            signature_height = min(48, view_image.height)
+            view = view_image.resize((signature_width, signature_height)).point(
+                lambda value: (value // 16) * 16
+            ).tobytes()
             unchanged = unchanged + 1 if view == previous_view else 0
             previous_view = view
             if unchanged >= 2:
@@ -324,7 +336,8 @@ class WorkflowRunner:
         self._check_input()
         pyautogui.press("escape")
         raise SafetyError(
-            f"Não foi possível localizar {label!r} dentro da lista aberta."
+            f"Não foi possível localizar {label!r} dentro da lista aberta após "
+            "varredura completa. A rolagem foi interrompida por segurança."
         )
 
     def _clear_company_checkbox(

@@ -27,7 +27,7 @@ def text_mask(image):
     return (np.abs(gray.astype(float) - background) > 65).astype('uint8') * 255
 
 
-def locate_light_channel(reference_path: Path, slug: str, rgb):
+def locate_light_channel(reference_path: Path, slug: str, rgb, min_score=.80):
     import cv2
     import numpy as np
     from PIL import Image
@@ -49,6 +49,6 @@ def locate_light_channel(reference_path: Path, slug: str, rgb):
         resized = cv2.resize(template, (width, height), interpolation=cv2.INTER_NEAREST)
         scores = cv2.matchTemplate(search, resized, cv2.TM_CCOEFF_NORMED)
         _, score, _, point = cv2.minMaxLoc(scores)
-        if score >= .90 and (best is None or score > best[0]):
+        if score >= min_score and (best is None or score > best[0]):
             best = (score, point[0], point[1], width, height)
     return best
