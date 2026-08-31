@@ -244,9 +244,9 @@ class DirectPrintDesktop:
         return self.identity(row)
 
     def page_key(self, row, channel):
-        actual = self.read_cell(self.column_x('channel'), row)
-        if actual != channel:
-            raise RuntimeError(f'Grade de {actual}, esperada {channel}. Ronda interrompida.')
+        # The selected channel is validated when an eligible order is found.
+        # For paging, the invoice alone identifies whether the visible tail
+        # changed and avoids alternating clicks across distant columns.
         invoice = self.read_cell(self.column_x('invoice'), row)
         if not invoice.replace('.', '').isdigit():
             raise RuntimeError('Não foi possível identificar a posição da grade com segurança.')
@@ -276,7 +276,6 @@ class DirectPrintDesktop:
         _, rows = self.snapshot()
         if not rows:
             raise RuntimeError('A grade desapareceu ao retornar para a primeira página.')
-        self.page_key(rows[0], channel)
         return True
 
     def seek_grid_edge(self, channel, *, bottom):
@@ -431,10 +430,8 @@ def print_store(backend, journal, channel, allowed_channels):
         backend.runner.log.info('%s: verificação completa %d; %d impressão(ões) nesta passagem.',
                                 channel, pass_number, printed)
         empty_passes = empty_passes + 1 if printed == 0 else 0
-        if empty_passes:
-            backend.runner.log.info('%s: passagem vazia %d/2 antes de liberar a troca.', channel, empty_passes)
-        if empty_passes >= 2:
-            backend.runner.log.info('%s: duas verificações sem etiquetas; liberada a troca de loja.', channel)
+        if empty_passes >= 1:
+            backend.runner.log.info('%s: verificação completa sem etiquetas; liberada a troca de loja.', channel)
             return total
     raise RuntimeError('A loja continuou recebendo etiquetas por muitas verificações; ronda interrompida.')
 

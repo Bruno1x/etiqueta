@@ -23,9 +23,9 @@ class IdentityColumnTests(unittest.TestCase):
     def test_page_key_uses_only_channel_and_invoice(self):
         backend = object.__new__(DirectPrintDesktop)
         backend.expanded_grid = False
-        backend.read_cell = Mock(side_effect=['ML CENTRAL', '4.037'])
+        backend.read_cell = Mock(return_value='4.037')
         self.assertEqual(backend.page_key(SimpleNamespace(y=500), 'ML CENTRAL'), ('4.037',))
-        self.assertEqual(backend.read_cell.call_count, 2)
+        self.assertEqual(backend.read_cell.call_count, 1)
 
 
 if __name__ == '__main__':

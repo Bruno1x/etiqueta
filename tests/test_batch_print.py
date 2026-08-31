@@ -73,7 +73,7 @@ class BatchPrintTests(unittest.TestCase):
         grid = FakeGrid([[(1, True, False), (2, False, False)], [(3, True, False), (4, True, True)]])
         self.assertEqual(self.run_store(grid), 2)
         self.assertEqual([o.invoice for o in grid.sent], ['1', '3'])
-        self.assertEqual(grid.start_calls, 3)  # impressão + duas passagens com zero restantes
+        self.assertEqual(grid.start_calls, 2)  # impressão + uma verificação completa sem pendências
 
     def test_next_round_rechecks_previously_red(self):
         grid = FakeGrid([[(1, False, False), (2, True, False)]])
