@@ -101,7 +101,7 @@ class DirectPrintDesktop:
         self.window = active
         self.runner.log.info('Janela de impressão validada: %s; classe %s; handle %s', active.title, class_name, active.handle)
         self.guard()
-        self.layout = self.reader.layout(ImageGrab.grab(all_screens=True))
+        self.layout = self.resolve_layout(ImageGrab.grab(all_screens=True))
         self.check_target(self.layout.point(0, 0))
         self.check_target(self.layout.point(1134, 20))
 
@@ -123,10 +123,54 @@ class DirectPrintDesktop:
     def snapshot(self):
         self.guard()
         image = ImageGrab.grab(all_screens=True)
-        layout = self.reader.layout(image)
-        if layout != self.layout:
-            raise RuntimeError('A grade mudou de posição/escala durante o teste. Recomece sem imprimir.')
+        layout = self.resolve_layout(image)
+        self.validate_layout(layout)
         return image, self.reader.rows(image, layout)
+
+    def validate_layout(self, layout):
+        if self.layout is None:
+            raise RuntimeError('A grade ainda não foi validada.')
+        if (abs(layout.left - self.layout.left) > 4 or abs(layout.top - self.layout.top) > 4
+                or abs(layout.scale - self.layout.scale) > .03):
+            raise RuntimeError('A grade mudou de posição/escala durante o teste. Recomece sem imprimir.')
+
+    def resolve_layout(self, image):
+        try:
+            layout = self.reader.layout(image)
+            self.runner.log.debug('Grade reconhecida pelo cabeçalho visual.')
+            return layout
+        except RuntimeError as visual_error:
+            try:
+                layout = self.calibrated_layout()
+            except Exception as calibration_error:
+                raise RuntimeError(
+                    'Grade não reconhecida pelo tema nem pela geometria calibrada. '
+                    'Mantenha Lib Etiqueta na primeira coluna e execute Auto calibrar. '
+                    f'Detalhes: {visual_error}; {calibration_error}'
+                ) from calibration_error
+            self.runner.log.info('Cabeçalho de outro tema: grade localizada pela geometria calibrada do SYSEMP.')
+            return layout
+
+    def calibrated_layout(self):
+        """Map the known grid geometry through the recognized manager screen."""
+        import cv2
+        import numpy as np
+
+        matcher = self.runner.reference_matcher
+        matched = matcher.match('ecommerce_manager')
+        if matched is None:
+            raise RuntimeError('Tela do gerenciador não corresponde aos temas calibrados.')
+        variant = next((item for item in matcher.manifest['screens'].values()
+                        if item.get('canonical_screen') == 'ecommerce_manager'
+                        and 'canonical_transform' in item), None)
+        if variant is None:
+            raise RuntimeError('Transformação canônica do gerenciador não configurada.')
+        canonical_transform = np.asarray(variant['canonical_transform'], dtype=float).reshape(3, 3)
+        inverse = np.linalg.inv(canonical_transform)
+        light = np.float32([[[0, 384]], [[1134, 384]], [[0, 404]]])
+        canonical = cv2.perspectiveTransform(light, inverse)
+        mapped = cv2.perspectiveTransform(canonical, matched.homography).reshape(-1, 2)
+        return self.reader.layout_from_points(mapped[0], mapped[1], mapped[2])
 
     def choose_candidate(self):
         _, rows = self.snapshot()
@@ -142,8 +186,7 @@ class DirectPrintDesktop:
         self.guard()
         # The title may be the ERP parent while the manager is an MDI child.
         # Require the actual grid, not a substring in the root window title.
-        if self.reader.layout(ImageGrab.grab(all_screens=True)) != self.layout:
-            raise RuntimeError('A grade do e-commerce não está na posição validada. Clique bloqueado.')
+        self.validate_layout(self.resolve_layout(ImageGrab.grab(all_screens=True)))
         self.check_target(point)
         virtual = virtual_screen_metrics()
         pyautogui.click(point[0] + virtual.left, point[1] + virtual.top)

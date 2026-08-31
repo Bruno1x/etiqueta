@@ -50,9 +50,27 @@ class PrintGridReader:
     def layout(self, rgb):
         result = self.locate(rgb, 'grid_header')
         if result is None:
-            raise RuntimeError('Cabeçalhos da grade não reconhecidos. Use o layout claro da gravação, com Lib Etiqueta na primeira coluna.')
+            raise RuntimeError('Cabeçalhos da grade não reconhecidos pela referência visual; tentando geometria adaptativa.')
         _, (left, top), scale = result
         return GridLayout(left, top, scale)
+
+    @staticmethod
+    def layout_from_points(header_left, header_right, body_left):
+        """Build layout from calibrated geometry, independent of header colors."""
+        horizontal = np.asarray(header_right, dtype=float) - np.asarray(header_left, dtype=float)
+        vertical = np.asarray(body_left, dtype=float) - np.asarray(header_left, dtype=float)
+        scale_x = float(np.linalg.norm(horizontal)) / 1134.0
+        scale_y = float(np.linalg.norm(vertical)) / 20.0
+        if not (.45 <= scale_x <= 1.80 and .45 <= scale_y <= 1.80):
+            raise RuntimeError('Escala calculada para a grade é inválida.')
+        if max(scale_x, scale_y) / min(scale_x, scale_y) > 1.18:
+            raise RuntimeError('A geometria calculada para a grade está deformada.')
+        if abs(horizontal[1]) > max(4, abs(horizontal[0]) * .04):
+            raise RuntimeError('Cabeçalho calculado está inclinado.')
+        if abs(vertical[0]) > max(4, abs(vertical[1]) * .12) or vertical[1] <= 0:
+            raise RuntimeError('Corpo calculado da grade está desalinhado.')
+        scale = (scale_x + scale_y) / 2
+        return GridLayout(round(float(header_left[0])), round(float(header_left[1])), scale)
 
     def checkbox(self, rgb, x, y, scale):
         gray = cv2.cvtColor(np.asarray(rgb), cv2.COLOR_RGB2GRAY)

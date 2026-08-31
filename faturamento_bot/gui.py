@@ -87,7 +87,10 @@ class EtiquetasApp:
             command=self.stop_patrol,
         ).grid(row=0, column=2, padx=8, pady=4, sticky="ew")
         ttk.Button(buttons, text='ATUALIZAR SISTEMA', command=self.check_updates).grid(
-            row=1, column=0, columnspan=3, padx=(0, 8), pady=4, sticky='ew')
+            row=1, column=2, padx=8, pady=4, sticky='ew')
+        ttk.Button(buttons, text='AUTO CALIBRAR TELA', style='Accent.TButton',
+                   command=self.auto_calibrate).grid(
+            row=1, column=0, columnspan=2, padx=(0, 8), pady=4, sticky='ew')
         for column in range(3):
             buttons.columnconfigure(column, weight=1)
 
@@ -106,7 +109,6 @@ class EtiquetasApp:
                         variable=self.advanced_visible, command=self._toggle_advanced).pack(anchor='w', pady=(0, 8))
         self.advanced_frame = ttk.Frame(shell)
         advanced_buttons = (
-            ('Auto calibrar', self.auto_calibrate),
             ('Calibração manual', self.guided_calibration),
             ('Testar pontos', self.test_points),
             ('Teste sem imprimir', self.test_sysemp_flow),
