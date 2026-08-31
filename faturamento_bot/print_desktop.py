@@ -18,8 +18,8 @@ from .windows import (activate_and_maximize, find_unique_window,
                       foreground_root_handle, foreground_window_info, virtual_screen_metrics)
 
 
-COMPACT_COLUMNS = {'channel': 180, 'invoice': 308, 'status': 391, 'marketplace_order': 1060}
-EXPANDED_COLUMNS = {'channel': 428, 'invoice': 560, 'status': 644, 'marketplace_order': 1500}
+COMPACT_COLUMNS = {'channel': 180, 'invoice': 308, 'status': 391}
+EXPANDED_COLUMNS = {'channel': 428, 'invoice': 560, 'status': 644}
 
 
 def is_print_workspace(window, class_name, process_regex):
@@ -221,8 +221,11 @@ class DirectPrintDesktop:
         status = self.read_cell(self.column_x('status'), row)
         if status != '100':
             raise RuntimeError(f'Status NFe diferente de 100 ({status!r}); impressão bloqueada.')
-        order = self.read_cell(self.column_x('marketplace_order'), row)
-        return OrderIdentity(channel, order, invoice)
+        # Nota Fiscal is unique inside one channel and is sufficient for the
+        # durable duplicate guard. Reading the far-right marketplace column can
+        # horizontally move some SYSEMP grids and invalidate their geometry.
+        safe_order_key = invoice.replace('.', '').zfill(8)
+        return OrderIdentity(channel, safe_order_key, invoice)
 
     def select_and_identify(self, row):
         return self.identity(row)
@@ -232,10 +235,9 @@ class DirectPrintDesktop:
         if actual != channel:
             raise RuntimeError(f'Grade de {actual}, esperada {channel}. Ronda interrompida.')
         invoice = self.read_cell(self.column_x('invoice'), row)
-        order = self.read_cell(self.column_x('marketplace_order'), row)
-        if not invoice.replace('.', '').isdigit() or not order.isdigit() or len(order) < 8:
+        if not invoice.replace('.', '').isdigit():
             raise RuntimeError('Não foi possível identificar a posição da grade com segurança.')
-        return invoice, order
+        return (invoice,)
 
     def move_grid(self, key):
         self.guard()
@@ -316,7 +318,7 @@ class DirectPrintDesktop:
         self.verify_candidate(row, order)
         image, _ = self.snapshot()
         point = self.reader.print_point(image)
-        self.runner.log.warning('Envio real: Etiqueta + Documentos, pedido %s, canal %s. Sem repetição automática.', order.marketplace_order, order.channel)
+        self.runner.log.warning('Envio real: Etiqueta + Documentos, nota %s, canal %s. Sem repetição automática.', order.invoice, order.channel)
         self.click(point)
 
     def wait_result(self, row, order):
