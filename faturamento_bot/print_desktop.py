@@ -18,6 +18,10 @@ from .windows import (activate_and_maximize, find_unique_window,
                       foreground_root_handle, foreground_window_info, virtual_screen_metrics)
 
 
+COMPACT_COLUMNS = {'channel': 180, 'invoice': 308, 'status': 391, 'marketplace_order': 1060}
+EXPANDED_COLUMNS = {'channel': 428, 'invoice': 560, 'status': 644, 'marketplace_order': 1500}
+
+
 def is_print_workspace(window, class_name, process_regex):
     if class_name == '#32770' or not re.search(process_regex, window.process_path):
         return False
@@ -74,6 +78,7 @@ class DirectPrintDesktop:
         self.reader = PrintGridReader(self.config.root / 'assets/print_ui')
         self.clipboard = WindowsClipboard()
         self.layout = None
+        self.expanded_grid = False
         self.window = None
 
     def guard(self):
@@ -125,7 +130,7 @@ class DirectPrintDesktop:
         image = ImageGrab.grab(all_screens=True)
         layout = self.resolve_layout(image)
         self.validate_layout(layout)
-        return image, self.reader.rows(image, layout)
+        return image, self.reader.rows(image, layout, expanded=self.expanded_grid)
 
     def validate_layout(self, layout):
         if self.layout is None:
@@ -137,6 +142,7 @@ class DirectPrintDesktop:
     def resolve_layout(self, image):
         try:
             layout = self.reader.layout(image)
+            self.expanded_grid = False
             self.runner.log.debug('Grade reconhecida pelo cabeçalho visual.')
             return layout
         except RuntimeError as visual_error:
@@ -149,7 +155,12 @@ class DirectPrintDesktop:
                     f'Detalhes: {visual_error}; {calibration_error}'
                 ) from calibration_error
             self.runner.log.info('Cabeçalho de outro tema: grade localizada pela geometria calibrada do SYSEMP.')
+            self.expanded_grid = True
             return layout
+
+    def column_x(self, name):
+        columns = EXPANDED_COLUMNS if self.expanded_grid else COMPACT_COLUMNS
+        return columns[name]
 
     def calibrated_layout(self):
         """Map the known grid geometry through the recognized manager screen."""
@@ -205,22 +216,23 @@ class DirectPrintDesktop:
         raise RuntimeError('A célula não foi copiada. No SYSEMP, deixe “Ao clicar na Linha da Grid, copiar o conteúdo da Célula” em Sim. Nada foi impresso.')
 
     def identity(self, row):
-        channel = self.read_cell(180, row)
-        invoice = self.read_cell(308, row)
-        status = self.read_cell(391, row)
+        channel = self.read_cell(self.column_x('channel'), row)
+        invoice = self.read_cell(self.column_x('invoice'), row)
+        status = self.read_cell(self.column_x('status'), row)
         if status != '100':
             raise RuntimeError(f'Status NFe diferente de 100 ({status!r}); impressão bloqueada.')
-        order = self.read_cell(1060, row)
+        order = self.read_cell(self.column_x('marketplace_order'), row)
         return OrderIdentity(channel, order, invoice)
 
     def select_and_identify(self, row):
         return self.identity(row)
 
     def page_key(self, row, channel):
-        actual = self.read_cell(180, row)
+        actual = self.read_cell(self.column_x('channel'), row)
         if actual != channel:
             raise RuntimeError(f'Grade de {actual}, esperada {channel}. Ronda interrompida.')
-        invoice, order = self.read_cell(308, row), self.read_cell(1060, row)
+        invoice = self.read_cell(self.column_x('invoice'), row)
+        order = self.read_cell(self.column_x('marketplace_order'), row)
         if not invoice.replace('.', '').isdigit() or not order.isdigit() or len(order) < 8:
             raise RuntimeError('Não foi possível identificar a posição da grade com segurança.')
         return invoice, order
@@ -237,7 +249,7 @@ class DirectPrintDesktop:
         _, rows = self.snapshot()
         if not rows:
             return None
-        self.read_cell(180, rows[0])  # Focus the grid before keyboard navigation.
+        self.read_cell(self.column_x('channel'), rows[0])  # Focus the grid before keyboard navigation.
         last = self.seek_grid_edge(channel, bottom=True)
         self.seek_grid_edge(channel, bottom=False)
         return last
@@ -274,7 +286,7 @@ class DirectPrintDesktop:
         _, rows = self.snapshot()
         if not rows:
             raise RuntimeError('A grade desapareceu antes de avançar.')
-        self.read_cell(180, rows[-1])
+        self.read_cell(self.column_x('channel'), rows[-1])
         self.move_grid('pagedown')
         _, rows = self.snapshot()
         if not rows or self.page_key(rows[-1], channel) == previous_tail:

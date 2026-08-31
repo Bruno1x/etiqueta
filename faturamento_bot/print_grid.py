@@ -88,7 +88,27 @@ class PrintGridReader:
             return None
         return winner == 'checked'
 
-    def rows(self, rgb, layout):
+    def adaptive_checkbox(self, rgb, x, y, scale):
+        """Read the filled dark-theme checkbox without depending on its colors."""
+        gray = cv2.cvtColor(np.asarray(rgb), cv2.COLOR_RGB2GRAY)
+        inner = max(2, round(3 * scale))
+        outer = max(inner + 2, round(7 * scale))
+        if y - outer < 0 or x - outer < 0 or y + outer >= gray.shape[0] or x + outer >= gray.shape[1]:
+            return None
+        center = gray[y-inner:y+inner+1, x-inner:x+inner+1].astype(float)
+        patch = gray[y-outer:y+outer+1, x-outer:x+outer+1].astype(float)
+        mask = np.ones(patch.shape, dtype=bool)
+        offset = outer - inner
+        mask[offset:offset+center.shape[0], offset:offset+center.shape[1]] = False
+        surrounding = patch[mask]
+        difference = float(center.mean() - np.median(surrounding))
+        if difference >= 12 or np.percentile(center, 90) - np.median(surrounding) >= 35:
+            return True
+        if difference <= -7:
+            return False
+        return None
+
+    def rows(self, rgb, layout, expanded=False):
         array = np.asarray(rgb)
         x, start = layout.point(57, 21)
         radius = max(3, round(10 * layout.scale))
@@ -105,14 +125,17 @@ class PrintGridReader:
             y = start + local_y
             patch = green[max(0, local_y-3):local_y+4]
             is_green = bool(patch.sum() >= 12 * layout.scale)
-            label_x, _ = layout.point(575, 0)
-            invoice_x, _ = layout.point(484, 0)
-            selected_x, _ = layout.point(250, 0)
+            label_x, _ = layout.point(918 if expanded else 575, 0)
+            invoice_x, _ = layout.point(734 if expanded else 484, 0)
+            selected_x, _ = layout.point(100 if expanded else 250, 0)
             color = array[y, selected_x].astype(float)
             selected = bool(color[2] > color[0] + 35 and color[2] > color[1] + 15)
+            label_state = (self.adaptive_checkbox(array, label_x, y, layout.scale) if expanded
+                           else self.checkbox(array, label_x, y, layout.scale))
+            invoice_state = (self.adaptive_checkbox(array, invoice_x, y, layout.scale) if expanded
+                             else self.checkbox(array, invoice_x, y, layout.scale))
             result.append(GridRow(y, is_green,
-                                  self.checkbox(array, label_x, y, layout.scale),
-                                  self.checkbox(array, invoice_x, y, layout.scale), selected))
+                                  label_state, invoice_state, selected))
         return sorted(result, key=lambda item: item.y)
 
     def print_point(self, rgb):
