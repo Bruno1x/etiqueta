@@ -297,8 +297,8 @@ def run_direct_print_test(runner, routing_confirmed, expected_channel=None):
                          runner.config.processing['label_channels'], expected_channel=expected_channel)
 
 
-def print_store(backend, journal, channel, allowed_channels):
-    """Drain each visible page, then advance until the recorded last order."""
+def _scan_store_once(backend, journal, channel, allowed_channels):
+    """Drain every page once and return how many orders were confirmed."""
     last = backend.start_pages(channel)
     if last is None:
         return 0
@@ -340,6 +340,24 @@ def print_store(backend, journal, channel, allowed_channels):
             return count
         backend.next_page(channel, tail)
     raise RuntimeError('Limite de páginas atingido; ronda interrompida.')
+
+
+def print_store(backend, journal, channel, allowed_channels):
+    """Do not leave a store until a complete verification pass prints nothing."""
+    total = 0
+    empty_passes = 0
+    for pass_number in range(1, 1001):
+        printed = _scan_store_once(backend, journal, channel, allowed_channels)
+        total += printed
+        backend.runner.log.info('%s: verificação completa %d; %d impressão(ões) nesta passagem.',
+                                channel, pass_number, printed)
+        empty_passes = empty_passes + 1 if printed == 0 else 0
+        if empty_passes:
+            backend.runner.log.info('%s: passagem vazia %d/2 antes de liberar a troca.', channel, empty_passes)
+        if empty_passes >= 2:
+            backend.runner.log.info('%s: duas verificações sem etiquetas; liberada a troca de loja.', channel)
+            return total
+    raise RuntimeError('A loja continuou recebendo etiquetas por muitas verificações; ronda interrompida.')
 
 
 def run_print_patrol(runner):

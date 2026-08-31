@@ -10,6 +10,7 @@ from .config import AppConfig, load_config
 from .runner import OperationCancelled, RunMode, WorkflowRunner, configure_logging
 from .printing import find_required_printer, installed_printer_names
 from .windows import enable_dpi_awareness, screen_metrics, virtual_screen_metrics
+from .user_settings import load_interval, save_interval
 
 enable_dpi_awareness()
 
@@ -26,6 +27,8 @@ class EtiquetasApp:
         self.stop_event = threading.Event()
         self.worker: threading.Thread | None = None
         self._task_minimized = False
+        self.interval_minutes = load_interval(
+            config.root, max(1, int(config.patrol['interval_seconds']) // 60))
 
         self.root = tk.Tk()
         self.root.title(f"Etiquetas Bot — SYSEMP — {__version__}")
@@ -88,6 +91,15 @@ class EtiquetasApp:
         for column in range(3):
             buttons.columnconfigure(column, weight=1)
 
+        timer = ttk.Frame(shell)
+        timer.pack(fill='x', pady=(0, 8))
+        ttk.Label(timer, text='Nova ronda após').pack(side='left')
+        self.interval_var = tk.StringVar(value=str(self.interval_minutes))
+        ttk.Spinbox(timer, from_=1, to=1440, width=7, justify='center',
+                    textvariable=self.interval_var).pack(side='left', padx=8)
+        ttk.Label(timer, text='minuto(s) do término').pack(side='left')
+        ttk.Button(timer, text='SALVAR INTERVALO', command=self.save_patrol_interval).pack(side='right')
+
         self.live_var = tk.BooleanVar(value=True)
         self.advanced_visible = tk.BooleanVar(value=False)
         ttk.Checkbutton(shell, text='Mostrar ferramentas avançadas',
@@ -128,6 +140,18 @@ class EtiquetasApp:
             self.advanced_frame.pack(fill='x', pady=(0, 10), before=self.activity_label)
         else:
             self.advanced_frame.pack_forget()
+
+    def save_patrol_interval(self, *, notify=True):
+        try:
+            self.interval_minutes = save_interval(self.config.root, self.interval_var.get())
+        except (OSError, ValueError) as error:
+            messagebox.showerror('Intervalo inválido', str(error))
+            return None
+        self.interval_var.set(str(self.interval_minutes))
+        self._append_log(f'Intervalo salvo: nova ronda {self.interval_minutes} minuto(s) após o término.')
+        if notify:
+            messagebox.showinfo('Intervalo salvo', f'Nova ronda após {self.interval_minutes} minuto(s).')
+        return self.interval_minutes
 
     def _append_log(self, text: str) -> None:
         self.log.configure(state="normal")
@@ -225,6 +249,9 @@ class EtiquetasApp:
         GuidedCalibrationDialog(self, specs)
 
     def start_patrol(self) -> None:
+        interval_minutes = self.save_patrol_interval(notify=False)
+        if interval_minutes is None:
+            return
         live = True
         physical = live and not self.config.raw['printing']['test_without_physical_print']
         if physical:
@@ -233,7 +260,7 @@ class EtiquetasApp:
                 'Iniciar ronda de impressão real',
                 f'A ronda imprimirá os pedidos verdes e não impressos das oito lojas ML, um por vez.\n\n'
                 f'Confirme Etiqueta + Documentos configurado no SYSEMP para {required}: transporte + DANFE, 100 × 150 mm cada, uma cópia.\n\n'
-                f'Nova passagem após {int(self.config.patrol["interval_seconds"]) // 60} minutos do término. '
+                f'Nova passagem após {interval_minutes} minuto(s) do término. '
                 'Deixe a cópia da célula em Sim e não use este computador durante a execução. '
                 'Em resultado incerto, a ronda será interrompida. Iniciar?',
             ):
@@ -254,8 +281,9 @@ class EtiquetasApp:
                     if self.stop_event.is_set():
                         break
                     runner.run(self.config.workflows[name])
-                runner.log.info('Aguardando %s segundos para a próxima ronda.', self.config.patrol['interval_seconds'])
-                if self.stop_event.wait(int(self.config.patrol["interval_seconds"])):
+                interval_seconds = interval_minutes * 60
+                runner.log.info('Aguardando %s minuto(s) para a próxima ronda.', interval_minutes)
+                if self.stop_event.wait(interval_seconds):
                     break
             return "Ronda encerrada."
 
