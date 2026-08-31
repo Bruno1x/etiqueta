@@ -41,6 +41,21 @@ class SafetyError(RuntimeError):
     pass
 
 
+# Visual order of the fixed SYSEMP CheckedComboBoxEdit. Keeping the complete
+# list is essential: the operator may search only some ML stores, but keyboard
+# navigation still starts at the first item in the control.
+ECOMMERCE_CHANNEL_INDEX = {
+    'ML CENTRAL': 14,
+    'ML DISTRIBUIDOR': 15,
+    'ML FABRICA': 16,
+    'ML HERO BAND': 17,
+    'ML POOLSY': 18,
+    'ML SHOPPING': 19,
+    'ML STORE': 20,
+    'ML UNIVERSO': 21,
+}
+
+
 class OperationCancelled(RuntimeError):
     pass
 
@@ -230,6 +245,12 @@ class WorkflowRunner:
         field = self.reference_matcher.map_point(matched, field_x, field_y)
         if field is None:
             raise SafetyError(f"Campo não encontrado para selecionar {label}.")
+        if (screen_id == 'ecommerce_manager' and field_y == 211
+                and self.mode.live and label in ECOMMERCE_CHANNEL_INDEX):
+            self._set_ecommerce_channel_by_keyboard(
+                field, anchor, label, selected
+            )
+            return
         virtual = virtual_screen_metrics()
         if dropdown_height is None:
             dropdown_height = 440 if screen_id == "invoice_main" else 190
@@ -339,6 +360,47 @@ class WorkflowRunner:
             f"Não foi possível localizar {label!r} dentro da lista aberta após "
             "varredura completa. A rolagem foi interrompida por segurança."
         )
+
+    def _ecommerce_channel_is_in_field(self, field, anchor):
+        region = (field.x - 275, field.y - 15, field.x + 205, field.y + 15)
+        return self.calibration.locate_anchor(
+            anchor, region=region, min_score=.72
+        ) is not None
+
+    def _set_ecommerce_channel_by_keyboard(
+        self, field, anchor: str, label: str, selected: bool
+    ) -> None:
+        """Toggle one fixed SYSEMP item without image-driven scrolling."""
+        import pyautogui
+
+        self._check_cancelled()
+        currently_selected = self._ecommerce_channel_is_in_field(field, anchor)
+        if currently_selected == selected:
+            state = 'marcado' if selected else 'desmarcado'
+            self.log.info('Canal confirmado no campo: %s — %s', label, state)
+            return
+
+        self._check_input()
+        pyautogui.click(field.x, field.y)
+        time.sleep(.25)
+        pyautogui.press('home')
+        index = ECOMMERCE_CHANNEL_INDEX[label]
+        if index:
+            pyautogui.press('down', presses=index, interval=.025)
+        pyautogui.press('space')
+        time.sleep(.2)
+        pyautogui.press('escape')
+        time.sleep(.25)
+
+        actual = self._ecommerce_channel_is_in_field(field, anchor)
+        if actual != selected:
+            state = 'marcar' if selected else 'desmarcar'
+            raise SafetyError(
+                f'Não foi possível {state} {label} pela navegação do SYSEMP. '
+                'A ronda foi interrompida sem pesquisar.'
+            )
+        state = 'marcado' if selected else 'desmarcado'
+        self.log.info('Canal confirmado por teclado: %s — %s', label, state)
 
     def _clear_company_checkbox(
         self, screen_id: str, field_x: int, field_y: int
