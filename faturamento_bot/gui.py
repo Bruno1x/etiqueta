@@ -119,8 +119,7 @@ class EtiquetasApp:
             stores.columnconfigure(column, weight=1)
         store_actions = ttk.Frame(stores)
         store_actions.grid(row=2, column=0, columnspan=4, pady=(6, 0), sticky='ew')
-        ttk.Button(store_actions, text='SOMENTE ML CENTRAL', command=self.select_central_only).pack(side='left')
-        ttk.Button(store_actions, text='SELECIONAR TODAS', command=self.select_all_channels).pack(side='left', padx=8)
+        ttk.Button(store_actions, text='SELECIONAR TODAS', command=self.select_all_channels).pack(side='left')
         ttk.Button(store_actions, text='SALVAR LOJAS', command=self.save_store_selection).pack(side='right')
 
         self.live_var = tk.BooleanVar(value=True)
@@ -180,10 +179,6 @@ class EtiquetasApp:
             channel for channel in self.available_channels
             if self.channel_vars[channel].get()
         )
-
-    def select_central_only(self):
-        for channel, variable in self.channel_vars.items():
-            variable.set(channel == 'ML CENTRAL')
 
     def select_all_channels(self):
         for variable in self.channel_vars.values():
