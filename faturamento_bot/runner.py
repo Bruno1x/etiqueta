@@ -45,14 +45,16 @@ class SafetyError(RuntimeError):
 # list is essential: the operator may search only some ML stores, but keyboard
 # navigation still starts at the first item in the control.
 ECOMMERCE_CHANNEL_INDEX = {
-    'ML CENTRAL': 14,
-    'ML DISTRIBUIDOR': 15,
-    'ML FABRICA': 16,
-    'ML HERO BAND': 17,
-    'ML POOLSY': 18,
-    'ML SHOPPING': 19,
-    'ML STORE': 20,
-    'ML UNIVERSO': 21,
+    # After Home, the first Down enters the first item (AMAZON). Therefore the
+    # key count is the zero-based item index plus one.
+    'ML CENTRAL': 15,
+    'ML DISTRIBUIDOR': 16,
+    'ML FABRICA': 17,
+    'ML HERO BAND': 18,
+    'ML POOLSY': 19,
+    'ML SHOPPING': 20,
+    'ML STORE': 21,
+    'ML UNIVERSO': 22,
 }
 
 
@@ -380,20 +382,26 @@ class WorkflowRunner:
             self.log.info('Canal confirmado no campo: %s — %s', label, state)
             return
 
-        self._check_input()
-        pyautogui.click(field.x, field.y)
-        time.sleep(.25)
-        pyautogui.press('home')
-        index = ECOMMERCE_CHANNEL_INDEX[label]
-        if index:
-            pyautogui.press('down', presses=index, interval=.025)
-        pyautogui.press('space')
-        time.sleep(.2)
-        pyautogui.press('escape')
-        time.sleep(.25)
+        def toggle_target():
+            self._check_input()
+            pyautogui.click(field.x, field.y)
+            time.sleep(.25)
+            pyautogui.press('home')
+            pyautogui.press(
+                'down', presses=ECOMMERCE_CHANNEL_INDEX[label], interval=.025
+            )
+            pyautogui.press('space')
+            time.sleep(.2)
+            pyautogui.press('escape')
+            time.sleep(.25)
+
+        toggle_target()
 
         actual = self._ecommerce_channel_is_in_field(field, anchor)
         if actual != selected:
+            # Undo the exact keyboard action before stopping. This prevents a
+            # wrong item from remaining selected after a failed validation.
+            toggle_target()
             state = 'marcar' if selected else 'desmarcar'
             raise SafetyError(
                 f'Não foi possível {state} {label} pela navegação do SYSEMP. '

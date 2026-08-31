@@ -46,6 +46,20 @@ class KeyboardChannelTests(unittest.TestCase):
         click.assert_not_called()
         press.assert_not_called()
 
+    @patch('faturamento_bot.runner.time.sleep')
+    @patch('pyautogui.press')
+    @patch('pyautogui.click')
+    def test_failed_validation_reverts_the_toggle(self, click, press, sleep):
+        runner = self.make_runner()
+        runner._ecommerce_channel_is_in_field = Mock(side_effect=[False, False])
+        with self.assertRaisesRegex(RuntimeError, 'Não foi possível marcar'):
+            runner._set_ecommerce_channel_by_keyboard(
+                SimpleNamespace(x=450, y=211),
+                'channels/ml_central.png', 'ML CENTRAL', True
+            )
+        self.assertEqual(click.call_count, 2)
+        self.assertEqual(press.call_args_list.count(call('space')), 2)
+
 
 if __name__ == '__main__':
     unittest.main()
