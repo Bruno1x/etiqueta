@@ -84,7 +84,7 @@ def validate_payload(content, digest, current_requirements):
 def prepare_update(config, release):
     base_text = os.environ.get('ETIQUETAS_INSTALL_ROOT')
     if not base_text:
-        raise RuntimeError('Abra o bot pelo novo ABRIR_FATURAMENTO_BOT.cmd para habilitar atualizações.')
+        raise RuntimeError('Abra o bot pelo ABRIR_BOT.cmd para habilitar atualizações.')
     base = Path(base_text).resolve()
     if config.root.resolve() != base and not config.root.resolve().is_relative_to(base / '.updates'):
         raise ValueError('A instalação ativa não pertence a este atualizador.')

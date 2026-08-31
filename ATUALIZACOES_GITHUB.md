@@ -4,9 +4,9 @@ Repositório configurado: https://github.com/Bruno1x/etiqueta (público).
 
 ## Computador da impressão
 
-Esta instalação completa é necessária uma vez para adicionar o novo iniciador e o botão. Feche o bot antigo, extraia o pacote e abra ABRIR_FATURAMENTO_BOT.cmd. Para manter a configuração e calibração da instalação anterior, copie as pastas config e runtime da instalação antiga para esta, com ambos os bots fechados. O histórico de impressão em LOCALAPPDATA permanece no mesmo lugar.
+Esta instalação completa é necessária uma vez para adicionar o novo iniciador e o botão. Feche o bot antigo, extraia o pacote e abra ABRIR_BOT.cmd. Para manter a configuração e calibração da instalação anterior, copie as pastas config e runtime da instalação antiga para esta, com ambos os bots fechados. O histórico de impressão em LOCALAPPDATA permanece no mesmo lugar.
 
-Depois, pare a ronda e aguarde seu encerramento. Clique Verificar atualizações. O bot consulta a última Release, baixa código e checksum, valida o pacote e pede confirmação para reiniciar. Use sempre o mesmo ABRIR_FATURAMENTO_BOT.cmd da instalação inicial: ele abre a versão ativa em .updates.
+Depois, pare a ronda e aguarde seu encerramento. Clique Verificar atualizações. O bot consulta a última Release, baixa código e checksum, valida o pacote e pede confirmação para reiniciar. Use sempre o mesmo ABRIR_BOT.cmd da instalação inicial: ele abre a versão ativa em .updates.
 
 Imagens, calibração, configuração da Zebra e histórico não vêm do GitHub. Não são substituídos pelos padrões do pacote. O atualizador mantém versões anteriores. Para restaurar, feche o bot e execute RESTAURAR_VERSAO_ANTERIOR.cmd. Não exclua a pasta de instalação inicial ou .venv.
 
@@ -20,7 +20,7 @@ Nenhum arquivo foi enviado ao GitHub nesta entrega. Execute os comandos abaixo n
 git init
 git branch -M main
 git remote add origin https://github.com/Bruno1x/etiqueta.git
-git add .gitignore .github faturamento_bot tools requirements.txt update_bootstrap.py ABRIR_FATURAMENTO_BOT.cmd RESTAURAR_VERSAO_ANTERIOR.cmd tests/test_updater.py ATUALIZACOES_GITHUB.md
+git add .gitignore .github faturamento_bot tools requirements.txt update_bootstrap.py ABRIR_BOT.cmd ABRIR_FATURAMENTO_BOT.cmd RESTAURAR_VERSAO_ANTERIOR.cmd tests/test_updater.py ATUALIZACOES_GITHUB.md
 git diff --cached --stat
 git commit -m "Adiciona bot e atualizador por releases"
 git push -u origin main

@@ -81,10 +81,10 @@ Execute:
 
 ```powershell
 cd C:\Users\bruno\Documents\Codex\2026-08-24\pre\outputs\faturamento-bot
-.\ABRIR_FATURAMENTO_BOT.cmd
+.\ABRIR_BOT.cmd
 ```
 
-Ou dê duplo clique em `ABRIR_FATURAMENTO_BOT.cmd`.
+Ou dê duplo clique em `ABRIR_BOT.cmd`.
 
 ## Teste sem impressão
 

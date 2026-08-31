@@ -1,3 +1,3 @@
 """Automação segura de etiquetas do Mercado Livre no SYSEMP."""
 
-__version__ = "0.5.7-taskbar-restore"
+__version__ = "0.5.8-short-launcher"
