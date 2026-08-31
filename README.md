@@ -1,8 +1,8 @@
 # Etiquetas Bot — SYSEMP
 
-## Versão atual 0.5.5 — seleção exclusiva de loja
+## Versão atual 0.5.6 — clique confirmado na loja
 
-Esta versão reconhece os layouts compacto e expandido conhecidos, em tema claro ou escuro, desmarca todas as lojas ML antes da ronda e garante a limpeza da loja atual mesmo quando a operação é interrompida. A ordem semântica das colunas ainda é obrigatória. Leia **ATUALIZACOES_GITHUB.md** para a instalação inicial, publicação de releases e atualização do bot.
+Esta versão reconhece os layouts compacto e expandido conhecidos, em tema claro ou escuro, limpa todas as lojas ML antes da ronda e envia obrigatoriamente um clique para marcar a loja atual. A seleção é conferida depois do clique e a loja é desmarcada mesmo quando a operação é interrompida. A ordem semântica das colunas ainda é obrigatória.
 
 ## Versão atual 0.4.0 — ronda de impressão
 
@@ -53,7 +53,7 @@ Canais FULL, NUVEM e SHOPEE não fazem parte desta automação.
 
 ## Ordem obrigatória das colunas da grade
 
-Na versão `0.5.5`, mantenha as colunas visíveis nesta ordem:
+Na versão `0.5.6`, mantenha as colunas visíveis nesta ordem:
 
 1. Lib Etiqueta
 2. ID

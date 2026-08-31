@@ -1,3 +1,3 @@
 """Automação segura de etiquetas do Mercado Livre no SYSEMP."""
 
-__version__ = "0.5.5-single-store"
+__version__ = "0.5.6-force-store-click"

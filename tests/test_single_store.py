@@ -39,6 +39,9 @@ class SingleStoreSelectionTests(unittest.TestCase):
             ('ML CENTRAL', True), ('ML CENTRAL', False),
             ('ML DISTRIBUIDOR', True), ('ML DISTRIBUIDOR', False),
         ])
+        selecting = [call for call in runner._set_checklist_value.call_args_list
+                     if call.kwargs['selected']]
+        self.assertTrue(all(call.kwargs['force_click'] for call in selecting))
 
     @patch('faturamento_bot.runner.time.sleep')
     @patch('faturamento_bot.runner.activate_and_maximize')

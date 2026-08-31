@@ -219,6 +219,7 @@ class WorkflowRunner:
         selected: bool,
         dropdown_height: int | None = None,
         scrollbar_offset: int | None = None,
+        force_click: bool = False,
     ) -> None:
         import pyautogui
 
@@ -280,7 +281,17 @@ class WorkflowRunner:
                     else item.x - item.width // 2 - 11
                 )
                 currently_selected = self._checkbox_is_checked(checkbox_x, item.y)
-                if currently_selected != selected:
+                if force_click:
+                    if not selected:
+                        pyautogui.press("escape")
+                        raise SafetyError('Clique forçado somente pode ser usado para marcar uma loja.')
+                    self._check_input()
+                    pyautogui.click(checkbox_x, item.y)
+                    time.sleep(0.35)
+                    if self._checkbox_is_checked(checkbox_x, item.y) != selected:
+                        pyautogui.press("escape")
+                        raise SafetyError(f"Não foi possível confirmar a seleção de {label}.")
+                elif currently_selected != selected:
                     self._check_input()
                     pyautogui.click(checkbox_x, item.y)
                     time.sleep(0.35)
@@ -477,7 +488,8 @@ class WorkflowRunner:
             try:
                 selection_attempted = True
                 self._set_checklist_value(
-                    "ecommerce_manager", 450, 211, anchor, channel, selected=True
+                    "ecommerce_manager", 450, 211, anchor, channel,
+                    selected=True, force_click=True
                 )
                 self._click_reference("ecommerce_manager", 40, 50, 2.0)
                 if after_search is not None:
