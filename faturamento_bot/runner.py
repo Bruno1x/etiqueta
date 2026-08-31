@@ -463,24 +463,35 @@ class WorkflowRunner:
         self._prepare_label_dates()
 
         channels = tuple(self.config.processing["label_channels"])
+        self.log.info('Normalizando Canal de Vendas: desmarcando todas as lojas ML antes da ronda.')
+        for channel in channels:
+            self._set_checklist_value(
+                "ecommerce_manager", 450, 211, self._channel_anchor(channel),
+                channel, selected=False
+            )
         for index, channel in enumerate(channels, start=1):
             self._check_cancelled()
             self.log.info("Loja e-commerce %d/%d: %s", index, len(channels), channel)
             anchor = self._channel_anchor(channel)
-            self._set_checklist_value(
-                "ecommerce_manager", 450, 211, anchor, channel, selected=True
-            )
-            self._click_reference("ecommerce_manager", 40, 50, 2.0)
-            if after_search is not None:
-                result = after_search(channel)
-                if result is not None:
-                    # Stop immediately after an attempt; do not navigate on an uncertain result.
-                    return result
-            if after_search is None:
-                self.log.info('Teste seguro de %s concluído; nenhuma impressão foi iniciada.', channel)
-            self._set_checklist_value(
-                "ecommerce_manager", 450, 211, anchor, channel, selected=False
-            )
+            selection_attempted = False
+            try:
+                selection_attempted = True
+                self._set_checklist_value(
+                    "ecommerce_manager", 450, 211, anchor, channel, selected=True
+                )
+                self._click_reference("ecommerce_manager", 40, 50, 2.0)
+                if after_search is not None:
+                    result = after_search(channel)
+                    if result is not None:
+                        # The finally block clears the store before returning.
+                        return result
+                if after_search is None:
+                    self.log.info('Teste seguro de %s concluído; nenhuma impressão foi iniciada.', channel)
+            finally:
+                if selection_attempted:
+                    self._set_checklist_value(
+                        "ecommerce_manager", 450, 211, anchor, channel, selected=False
+                    )
 
     def prepare_home_sales(self) -> None:
         import pyautogui
