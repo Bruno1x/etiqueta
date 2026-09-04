@@ -59,6 +59,31 @@ def save_interval(root: Path, value):
     return minutes
 
 
+def load_printer(root: Path, default=''):
+    value = _read_settings(root).get('printer_name', default)
+    return str(value).strip()
+
+
+def save_printer(root: Path, value):
+    name = str(value).strip()
+    if not name:
+        raise ValueError('Selecione uma impressora para a ronda.')
+    _save_settings(root, {'printer_name': name})
+    return name
+
+
+def load_cutoff_settings(root: Path):
+    value = _read_settings(root).get('cutoff_schedule', {})
+    return value if isinstance(value, dict) else {}
+
+
+def save_cutoff_settings(root: Path, value):
+    if not isinstance(value, dict):
+        raise ValueError('Configuração de horários inválida.')
+    _save_settings(root, {'cutoff_schedule': value})
+    return value
+
+
 def validate_channels(selected, allowed):
     allowed_channels = tuple(str(item) for item in allowed)
     if not allowed_channels:

@@ -3,10 +3,12 @@ from tempfile import TemporaryDirectory
 import unittest
 
 from faturamento_bot.user_settings import (
+    load_printer,
     load_channels,
     load_interval,
     save_channels,
     save_interval,
+    save_printer,
     validate_channels,
     validate_interval,
 )
@@ -19,6 +21,13 @@ class UserSettingsTests(unittest.TestCase):
         for value in (0, 1441, True, '1.5', ''):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 validate_interval(value)
+
+    def test_printer_selection_is_preserved(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.assertEqual(load_printer(root, 'Zebra A'), 'Zebra A')
+            save_printer(root, 'Zebra B')
+            self.assertEqual(load_printer(root, 'Zebra A'), 'Zebra B')
 
     def test_saved_value_survives_reload(self):
         with TemporaryDirectory() as directory:

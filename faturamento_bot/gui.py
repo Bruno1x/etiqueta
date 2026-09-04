@@ -3,6 +3,7 @@ from __future__ import annotations
 import queue
 import threading
 import time
+from datetime import datetime
 from copy import deepcopy
 from dataclasses import replace
 from . import __version__
@@ -12,7 +13,10 @@ from .config import AppConfig, load_config
 from .runner import OperationCancelled, RunMode, WorkflowRunner, configure_logging
 from .printing import find_required_printer, installed_printer_names
 from .windows import enable_dpi_awareness, screen_metrics, virtual_screen_metrics
-from .user_settings import load_channels, load_interval, save_channels, save_interval
+from .cutoff_schedule import DEFAULT_CUTOFFS, due_channels, validate_cutoff_settings
+from .user_settings import (load_channels, load_cutoff_settings, load_interval,
+                            load_printer, save_channels, save_cutoff_settings,
+                            save_interval, save_printer)
 
 enable_dpi_awareness()
 
@@ -33,10 +37,14 @@ class EtiquetasApp:
             config.root, max(1, int(config.patrol['interval_seconds']) // 60))
         self.available_channels = tuple(config.processing['label_channels'])
         self.selected_channels = load_channels(config.root, self.available_channels)
+        self.cutoff_settings = validate_cutoff_settings(
+            load_cutoff_settings(config.root), self.available_channels)
+        configured_printer = config.raw['printing']['printer_name_contains']
+        self.selected_printer = load_printer(config.root, configured_printer)
 
         self.root = tk.Tk()
         self.root.title(f"Etiquetas Bot — SYSEMP — {__version__}")
-        self.root.geometry("920x720")
+        self.root.geometry("920x790")
         self.root.minsize(820, 650)
         self.root.configure(bg="#0f1923")
         self._build_ui()
@@ -76,6 +84,16 @@ class EtiquetasApp:
             anchor="w", pady=(4, 0)
         )
 
+        printer_row = ttk.Frame(shell)
+        printer_row.pack(fill='x', pady=(0, 10))
+        ttk.Label(printer_row, text='Impressora da ronda').pack(side='left')
+        self.printer_choice = tk.StringVar(value=self.selected_printer)
+        self.printer_combo = ttk.Combobox(
+            printer_row, textvariable=self.printer_choice, state='readonly', width=48)
+        self.printer_combo.pack(side='left', padx=8, fill='x', expand=True)
+        ttk.Button(printer_row, text='ATUALIZAR LISTA', command=self._load_printer_choices).pack(side='left', padx=(0, 6))
+        ttk.Button(printer_row, text='SALVAR', command=self.save_printer_selection).pack(side='left')
+
         buttons = ttk.Frame(shell)
         buttons.pack(fill="x", pady=(0, 10))
         ttk.Button(
@@ -106,6 +124,16 @@ class EtiquetasApp:
                     textvariable=self.interval_var).pack(side='left', padx=8)
         ttk.Label(timer, text='minuto(s) do término').pack(side='left')
         ttk.Button(timer, text='SALVAR INTERVALO', command=self.save_patrol_interval).pack(side='right')
+
+        schedule = ttk.Frame(shell)
+        schedule.pack(fill='x', pady=(0, 8))
+        self.schedule_enabled_var = tk.BooleanVar(value=self.cutoff_settings['enabled'])
+        ttk.Checkbutton(schedule, text='Usar horários de corte', variable=self.schedule_enabled_var,
+                        command=self._toggle_schedule).pack(side='left')
+        self.schedule_summary_var = tk.StringVar()
+        ttk.Label(schedule, textvariable=self.schedule_summary_var, style='Info.TLabel').pack(side='left', padx=10)
+        ttk.Button(schedule, text='CONFIGURAR HORÁRIOS', command=self.configure_cutoffs).pack(side='right')
+        self._update_schedule_summary()
 
         stores = ttk.LabelFrame(shell, text='Lojas da ronda', padding=(10, 7))
         stores.pack(fill='x', pady=(0, 8))
@@ -155,6 +183,55 @@ class EtiquetasApp:
             state="disabled",
         )
         self.log.pack(fill="both", expand=True)
+        self._load_printer_choices()
+
+    def _load_printer_choices(self):
+        try:
+            names = installed_printer_names()
+        except Exception as error:
+            messagebox.showerror('Impressoras', f'Não foi possível listar as impressoras: {error}')
+            return
+        self.printer_combo['values'] = names
+        if self.printer_choice.get() not in names:
+            try:
+                matching = find_required_printer(names, self.selected_printer) if self.selected_printer else None
+            except RuntimeError:
+                matching = None
+            if matching:
+                self.printer_choice.set(matching)
+
+    def save_printer_selection(self, *, notify=True):
+        try:
+            name = str(self.printer_choice.get()).strip()
+            if not name:
+                raise ValueError('Selecione uma impressora para a ronda.')
+            if name not in installed_printer_names():
+                raise ValueError(f'A impressora {name!r} não está instalada neste computador.')
+            save_printer(self.config.root, name)
+        except (OSError, RuntimeError, ValueError) as error:
+            messagebox.showerror('Impressora inválida', str(error))
+            return None
+        self.selected_printer = name
+        self.printer_var.set(f'Impressora da ronda: {name}')
+        self._append_log(f'Impressora salva para a ronda: {name}.')
+        if notify:
+            messagebox.showinfo('Impressora salva', f'A ronda validará a fila: {name}.')
+        return name
+
+    def _toggle_schedule(self):
+        self.cutoff_settings['enabled'] = bool(self.schedule_enabled_var.get())
+        save_cutoff_settings(self.config.root, self.cutoff_settings)
+        self._update_schedule_summary()
+
+    def _update_schedule_summary(self):
+        if self.cutoff_settings['enabled']:
+            self.schedule_summary_var.set(
+                f"inicia {self.cutoff_settings['advance_minutes']} min antes do corte")
+        else:
+            self.schedule_summary_var.set('desativado; usa o intervalo acima')
+
+    def configure_cutoffs(self):
+        CutoffScheduleDialog(self)
 
     def _toggle_advanced(self):
         if self.advanced_visible.get():
@@ -203,6 +280,7 @@ class EtiquetasApp:
     def _config_for_channels(self, channels):
         raw = deepcopy(self.config.raw)
         raw['processing']['label_channels'] = list(channels)
+        raw['printing']['printer_name_contains'] = self.selected_printer
         return replace(self.config, raw=raw)
 
     def _selected_run_config(self):
@@ -244,12 +322,11 @@ class EtiquetasApp:
                 )
             else:
                 self.profile_var.set("Perfil deste computador: ainda não criado")
-            required = str(self.config.raw["printing"]["printer_name_contains"])
-            printer = find_required_printer(installed_printer_names(), required)
+            printer = find_required_printer(installed_printer_names(), self.selected_printer)
             self.printer_var.set(
                 f"Impressora da ronda: {printer}"
                 if printer
-                else f"Impressora da ronda: nenhuma fila {required} encontrada"
+                else f"Impressora da ronda: fila {self.selected_printer} não encontrada"
             )
         except Exception as error:
             self.environment_var.set(f"Falha ao medir a tela: {error}")
@@ -310,9 +387,24 @@ class EtiquetasApp:
         interval_minutes = self.save_patrol_interval(notify=False)
         if interval_minutes is None:
             return
-        run_config = self._selected_run_config()
-        if run_config is None:
+        if self.save_printer_selection(notify=False) is None:
             return
+        if self.cutoff_settings['enabled']:
+            scheduled_channels = tuple(
+                channel for channel in self.available_channels
+                if self.cutoff_settings['stores'][channel]['enabled'] and
+                (self.cutoff_settings['stores'][channel]['first'] or
+                 self.cutoff_settings['stores'][channel]['second']))
+            if not scheduled_channels:
+                messagebox.showerror(
+                    'Agenda vazia',
+                    'Ative pelo menos uma loja com um horário de corte.')
+                return
+            run_config = self._config_for_channels(scheduled_channels)
+        else:
+            run_config = self._selected_run_config()
+            if run_config is None:
+                return
         channels = tuple(run_config.processing['label_channels'])
         live = True
         physical = live and not run_config.raw['printing']['test_without_physical_print']
@@ -323,7 +415,9 @@ class EtiquetasApp:
                 f'A ronda imprimirá os pedidos verdes e não impressos de {len(channels)} loja(s), um por vez:\n'
                 f'{", ".join(channels)}\n\n'
                 f'Confirme Etiqueta + Documentos configurado no SYSEMP para {required}: transporte + DANFE, 100 × 150 mm cada, uma cópia.\n\n'
-                f'Nova passagem após {interval_minutes} minuto(s) do término. '
+                + (f"Modo corte: {self.cutoff_settings['advance_minutes']} minuto(s) antes dos horários configurados. "
+                   if self.cutoff_settings['enabled'] else
+                   f'Nova passagem após {interval_minutes} minuto(s) do término. ') +
                 'Deixe a cópia da célula em Sim e não use este computador durante a execução. '
                 'Em resultado incerto, a ronda será interrompida. Iniciar?',
             ):
@@ -339,14 +433,31 @@ class EtiquetasApp:
                 stop_event=self.stop_event,
             )
             runner.print_routing_confirmed = physical
+            next_scheduled_runs = {}
             while not self.stop_event.is_set():
+                if self.cutoff_settings['enabled']:
+                    now = datetime.now()
+                    due = due_channels(self.cutoff_settings, now, set())
+                    for channel, key in due:
+                        if now < next_scheduled_runs.get(key, now):
+                            continue
+                        scheduled_config = self._config_for_channels((channel,))
+                        scheduled_runner = WorkflowRunner(
+                            scheduled_config, RunMode.for_patrol(scheduled_config, live),
+                            stop_event=self.stop_event)
+                        scheduled_runner.print_routing_confirmed = physical
+                        for name in scheduled_config.patrol['workflows']:
+                            scheduled_runner.run(scheduled_config.workflows[name])
+                        next_scheduled_runs[key] = datetime.fromtimestamp(
+                            time.time() + interval_minutes * 60)
+                    if self.stop_event.wait(15):
+                        break
+                    continue
                 for name in run_config.patrol["workflows"]:
                     if self.stop_event.is_set():
                         break
                     runner.run(run_config.workflows[name])
-                interval_seconds = interval_minutes * 60
-                runner.log.info('Aguardando %s minuto(s) para a próxima ronda.', interval_minutes)
-                if self.stop_event.wait(interval_seconds):
+                if self.stop_event.wait(interval_minutes * 60):
                     break
             return "Ronda encerrada."
 
@@ -601,6 +712,101 @@ class GuidedCalibrationDialog:
         if self.index < len(self.specs) - 1:
             self.index += 1
             self.refresh()
+
+
+class CutoffScheduleDialog:
+    DAY_NAMES = ('Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom')
+
+    def __init__(self, app: EtiquetasApp) -> None:
+        self.app = app
+        self.window = tk.Toplevel(app.root)
+        self.window.title('Horários de corte')
+        self.window.geometry('720x600')
+        self.window.minsize(660, 540)
+        self.window.transient(app.root)
+        self.window.grab_set()
+
+        frame = ttk.Frame(self.window, padding=20)
+        frame.pack(fill='both', expand=True)
+        ttk.Label(frame, text='Horários de corte', style='Title.TLabel').pack(anchor='w')
+        ttk.Label(
+            frame,
+            text='Na janela antes do corte, a loja é revisada no intervalo definido na tela principal.',
+            style='Info.TLabel').pack(anchor='w', pady=(2, 14))
+
+        controls = ttk.Frame(frame)
+        controls.pack(fill='x', pady=(0, 10))
+        self.enabled = tk.BooleanVar(value=app.cutoff_settings['enabled'])
+        ttk.Checkbutton(controls, text='Ativar agenda', variable=self.enabled).pack(side='left')
+        ttk.Label(controls, text='Começar').pack(side='left', padx=(24, 4))
+        self.advance = tk.StringVar(value=str(app.cutoff_settings['advance_minutes']))
+        ttk.Spinbox(controls, from_=0, to=240, width=5, justify='center',
+                    textvariable=self.advance).pack(side='left')
+        ttk.Label(controls, text='minutos antes').pack(side='left', padx=5)
+
+        days = ttk.LabelFrame(frame, text='Dias ativos', padding=8)
+        days.pack(fill='x', pady=(0, 10))
+        self.day_vars = []
+        for index, label in enumerate(self.DAY_NAMES):
+            variable = tk.BooleanVar(value=index in app.cutoff_settings['weekdays'])
+            self.day_vars.append(variable)
+            ttk.Checkbutton(days, text=label, variable=variable).pack(side='left', padx=8)
+
+        grid = ttk.LabelFrame(frame, text='Lojas (formato HH:MM)', padding=8)
+        grid.pack(fill='both', expand=True)
+        ttk.Label(grid, text='Usar').grid(row=0, column=0, padx=4)
+        ttk.Label(grid, text='Loja').grid(row=0, column=1, padx=4, sticky='w')
+        ttk.Label(grid, text='1º corte').grid(row=0, column=2, padx=4)
+        ttk.Label(grid, text='2º corte').grid(row=0, column=3, padx=4)
+        self.store_vars = {}
+        for row, channel in enumerate(app.available_channels, start=1):
+            current = app.cutoff_settings['stores'][channel]
+            enabled = tk.BooleanVar(value=current['enabled'])
+            first = tk.StringVar(value=current['first'])
+            second = tk.StringVar(value=current['second'])
+            self.store_vars[channel] = (enabled, first, second)
+            ttk.Checkbutton(grid, variable=enabled).grid(row=row, column=0, padx=4)
+            ttk.Label(grid, text=channel).grid(row=row, column=1, padx=4, pady=3, sticky='w')
+            ttk.Entry(grid, textvariable=first, width=9, justify='center').grid(row=row, column=2, padx=8)
+            ttk.Entry(grid, textvariable=second, width=9, justify='center').grid(row=row, column=3, padx=8)
+        grid.columnconfigure(1, weight=1)
+
+        actions = ttk.Frame(frame)
+        actions.pack(fill='x', pady=(12, 0))
+        ttk.Button(actions, text='RESTAURAR HORÁRIOS INFORMADOS',
+                   command=self.restore_defaults).pack(side='left')
+        ttk.Button(actions, text='CANCELAR', command=self.window.destroy).pack(side='right')
+        ttk.Button(actions, text='SALVAR', style='Accent.TButton',
+                   command=self.save).pack(side='right', padx=8)
+
+    def restore_defaults(self):
+        for channel, (_, first, second) in self.store_vars.items():
+            values = DEFAULT_CUTOFFS.get(channel, ('', ''))
+            first.set(values[0])
+            second.set(values[1])
+
+    def save(self):
+        try:
+            value = {
+                'enabled': self.enabled.get(),
+                'advance_minutes': self.advance.get(),
+                'weekdays': [index for index, variable in enumerate(self.day_vars) if variable.get()],
+                'stores': {
+                    channel: {'enabled': enabled.get(), 'first': first.get(), 'second': second.get()}
+                    for channel, (enabled, first, second) in self.store_vars.items()
+                },
+            }
+            normalized = validate_cutoff_settings(value, self.app.available_channels)
+            save_cutoff_settings(self.app.config.root, normalized)
+        except (OSError, TypeError, ValueError) as error:
+            messagebox.showerror('Horários inválidos', str(error), parent=self.window)
+            return
+        self.app.cutoff_settings = normalized
+        self.app.schedule_enabled_var.set(normalized['enabled'])
+        self.app._update_schedule_summary()
+        self.app._append_log('Horários de corte salvos.')
+        self.window.destroy()
+        messagebox.showinfo('Horários salvos', 'A agenda de cortes foi salva neste computador.')
 
 
 def run_gui() -> None:

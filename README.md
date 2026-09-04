@@ -1,5 +1,41 @@
 # Etiquetas Bot — SYSEMP
 
+## Versão atual 0.7.0 — agenda de cortes e escolha da impressora
+
+Na tela principal, escolha a fila exata em **Impressora da ronda** e pressione
+**Salvar**. A ronda é bloqueada se essa impressora não estiver instalada. Quando
+há duas impressoras, o bot não escolhe por aproximação nem usa a impressora padrão
+como alternativa. O destino configurado em **Etiqueta + Documentos** no SYSEMP
+deve apontar para a mesma fila.
+
+Para trabalhar por horário, pressione **Configurar horários**:
+
+1. marque **Ativar agenda**;
+2. informe a antecedência (padrão: 30 minutos);
+3. escolha os dias ativos;
+4. marque as lojas e informe o primeiro e, se houver, o segundo corte em `HH:MM`;
+5. salve e deixe **Usar horários de corte** marcado antes de iniciar a ronda.
+
+Nesse modo, o intervalo comum passa a controlar as revisões dentro da janela do
+corte. Por exemplo: com 30 minutos de antecedência e intervalo de 5 minutos, a
+loja é drenada e revisada a cada 5 minutos até o corte. Se o bot abrir durante a
+janela, inicia a loja imediatamente; depois do corte, não executa a ocorrência
+atrasada.
+
+| Loja | 1º corte | 2º corte | Início com 30 min |
+|---|---:|---:|---:|
+| ML SHOPPING | 11:15 | 14:15 | 10:45 / 13:45 |
+| ML STORE | 10:45 | 14:00 | 10:15 / 13:30 |
+| ML CENTRAL | 14:30 | — | 14:00 |
+| ML UNIVERSO | 14:45 | — | 14:15 |
+| ML HERO BAND | 14:30 | — | 14:00 |
+| ML POOLSY | 15:00 | — | 14:30 |
+| ML DISTRIBUIDOR | 15:15 | — | 14:45 |
+| ML FABRICA | 14:45 | — | 14:15 |
+
+VIPSTAR e as lojas Shopee não foram incluídas: elas ainda não são canais
+autorizados nesta automação e a planilha não informou os cortes da Shopee.
+
 ## Versão atual 0.5.6 — clique confirmado na loja
 
 Esta versão reconhece os layouts compacto e expandido conhecidos, em tema claro ou escuro, limpa todas as lojas ML antes da ronda e envia obrigatoriamente um clique para marcar a loja atual. A seleção é conferida depois do clique e a loja é desmarcada mesmo quando a operação é interrompida. A ordem semântica das colunas ainda é obrigatória.
