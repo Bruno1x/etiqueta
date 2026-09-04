@@ -1,5 +1,11 @@
 # Etiquetas Bot — SYSEMP
 
+## Versão atual 0.7.1 — painel simplificado
+
+A tela principal mostra apenas status, iniciar, parar, configurar, autocalibrar,
+atualizar e atividade. Impressora, intervalo, agenda, lojas e ferramentas técnicas
+ficam recolhidos em **Configurar ronda** e aparecem somente quando necessários.
+
 ## Versão atual 0.7.0 — agenda de cortes e escolha da impressora
 
 Na tela principal, escolha a fila exata em **Impressora da ronda** e pressione

@@ -44,8 +44,8 @@ class EtiquetasApp:
 
         self.root = tk.Tk()
         self.root.title(f"Etiquetas Bot — SYSEMP — {__version__}")
-        self.root.geometry("920x790")
-        self.root.minsize(820, 650)
+        self.root.geometry("920x650")
+        self.root.minsize(820, 600)
         self.root.configure(bg="#0f1923")
         self._build_ui()
         self.root.after(120, self._consume_events)
@@ -83,8 +83,14 @@ class EtiquetasApp:
         ttk.Label(status_frame, textvariable=self.printer_var, style="Info.TLabel").pack(
             anchor="w", pady=(4, 0)
         )
+        self.configuration_var = tk.StringVar()
+        ttk.Label(status_frame, textvariable=self.configuration_var,
+                  style='Info.TLabel').pack(anchor='w', pady=(4, 0))
 
-        printer_row = ttk.Frame(shell)
+        self.settings_visible = tk.BooleanVar(value=False)
+        self.settings_frame = ttk.LabelFrame(shell, text='Configuração da ronda', padding=10)
+
+        printer_row = ttk.Frame(self.settings_frame)
         printer_row.pack(fill='x', pady=(0, 10))
         ttk.Label(printer_row, text='Impressora da ronda').pack(side='left')
         self.printer_choice = tk.StringVar(value=self.selected_printer)
@@ -108,15 +114,16 @@ class EtiquetasApp:
             style="Danger.TButton",
             command=self.stop_patrol,
         ).grid(row=0, column=2, padx=8, pady=4, sticky="ew")
+        ttk.Button(buttons, text='CONFIGURAR RONDA', command=self._toggle_settings).grid(
+            row=1, column=0, padx=(0, 8), pady=4, sticky='ew')
+        ttk.Button(buttons, text='AUTO CALIBRAR', command=self.auto_calibrate).grid(
+            row=1, column=1, padx=8, pady=4, sticky='ew')
         ttk.Button(buttons, text='ATUALIZAR SISTEMA', command=self.check_updates).grid(
             row=1, column=2, padx=8, pady=4, sticky='ew')
-        ttk.Button(buttons, text='AUTO CALIBRAR TELA', style='Accent.TButton',
-                   command=self.auto_calibrate).grid(
-            row=1, column=0, columnspan=2, padx=(0, 8), pady=4, sticky='ew')
         for column in range(3):
             buttons.columnconfigure(column, weight=1)
 
-        timer = ttk.Frame(shell)
+        timer = ttk.Frame(self.settings_frame)
         timer.pack(fill='x', pady=(0, 8))
         ttk.Label(timer, text='Nova ronda após').pack(side='left')
         self.interval_var = tk.StringVar(value=str(self.interval_minutes))
@@ -125,7 +132,7 @@ class EtiquetasApp:
         ttk.Label(timer, text='minuto(s) do término').pack(side='left')
         ttk.Button(timer, text='SALVAR INTERVALO', command=self.save_patrol_interval).pack(side='right')
 
-        schedule = ttk.Frame(shell)
+        schedule = ttk.Frame(self.settings_frame)
         schedule.pack(fill='x', pady=(0, 8))
         self.schedule_enabled_var = tk.BooleanVar(value=self.cutoff_settings['enabled'])
         ttk.Checkbutton(schedule, text='Usar horários de corte', variable=self.schedule_enabled_var,
@@ -135,7 +142,7 @@ class EtiquetasApp:
         ttk.Button(schedule, text='CONFIGURAR HORÁRIOS', command=self.configure_cutoffs).pack(side='right')
         self._update_schedule_summary()
 
-        stores = ttk.LabelFrame(shell, text='Lojas da ronda', padding=(10, 7))
+        stores = ttk.LabelFrame(self.settings_frame, text='Lojas da ronda', padding=(10, 7))
         stores.pack(fill='x', pady=(0, 8))
         self.channel_vars: dict[str, tk.BooleanVar] = {}
         for index, channel in enumerate(self.available_channels):
@@ -152,9 +159,9 @@ class EtiquetasApp:
 
         self.live_var = tk.BooleanVar(value=True)
         self.advanced_visible = tk.BooleanVar(value=False)
-        ttk.Checkbutton(shell, text='Mostrar ferramentas avançadas',
+        ttk.Checkbutton(self.settings_frame, text='Mostrar ferramentas avançadas',
                         variable=self.advanced_visible, command=self._toggle_advanced).pack(anchor='w', pady=(0, 8))
-        self.advanced_frame = ttk.Frame(shell)
+        self.advanced_frame = ttk.Frame(self.settings_frame)
         advanced_buttons = (
             ('Calibração manual', self.guided_calibration),
             ('Testar pontos', self.test_points),
@@ -184,6 +191,24 @@ class EtiquetasApp:
         )
         self.log.pack(fill="both", expand=True)
         self._load_printer_choices()
+        self._update_configuration_summary()
+
+    def _toggle_settings(self):
+        if self.settings_visible.get():
+            self.settings_frame.pack_forget()
+            self.settings_visible.set(False)
+            self.root.geometry('920x650')
+            return
+        self.settings_frame.pack(fill='x', pady=(0, 10), before=self.activity_label)
+        self.settings_visible.set(True)
+        self.root.geometry('920x790')
+
+    def _update_configuration_summary(self):
+        mode = ('agenda de cortes' if self.cutoff_settings['enabled']
+                else f'intervalo de {self.interval_minutes} min')
+        printer = self.selected_printer or 'impressora não selecionada'
+        self.configuration_var.set(
+            f'Configuração: {mode} — {len(self.selected_channels)} loja(s) — {printer}')
 
     def _load_printer_choices(self):
         try:
@@ -214,6 +239,7 @@ class EtiquetasApp:
         self.selected_printer = name
         self.printer_var.set(f'Impressora da ronda: {name}')
         self._append_log(f'Impressora salva para a ronda: {name}.')
+        self._update_configuration_summary()
         if notify:
             messagebox.showinfo('Impressora salva', f'A ronda validará a fila: {name}.')
         return name
@@ -222,6 +248,7 @@ class EtiquetasApp:
         self.cutoff_settings['enabled'] = bool(self.schedule_enabled_var.get())
         save_cutoff_settings(self.config.root, self.cutoff_settings)
         self._update_schedule_summary()
+        self._update_configuration_summary()
 
     def _update_schedule_summary(self):
         if self.cutoff_settings['enabled']:
@@ -235,7 +262,7 @@ class EtiquetasApp:
 
     def _toggle_advanced(self):
         if self.advanced_visible.get():
-            self.advanced_frame.pack(fill='x', pady=(0, 10), before=self.activity_label)
+            self.advanced_frame.pack(fill='x', pady=(0, 10))
         else:
             self.advanced_frame.pack_forget()
 
@@ -247,6 +274,7 @@ class EtiquetasApp:
             return None
         self.interval_var.set(str(self.interval_minutes))
         self._append_log(f'Intervalo salvo: nova ronda {self.interval_minutes} minuto(s) após o término.')
+        self._update_configuration_summary()
         if notify:
             messagebox.showinfo('Intervalo salvo', f'Nova ronda após {self.interval_minutes} minuto(s).')
         return self.interval_minutes
@@ -273,6 +301,7 @@ class EtiquetasApp:
             return None
         names = ', '.join(self.selected_channels)
         self._append_log(f'Lojas salvas para a ronda: {names}.')
+        self._update_configuration_summary()
         if notify:
             messagebox.showinfo('Lojas salvas', f'A ronda pesquisará somente: {names}.')
         return self.selected_channels
@@ -804,6 +833,7 @@ class CutoffScheduleDialog:
         self.app.cutoff_settings = normalized
         self.app.schedule_enabled_var.set(normalized['enabled'])
         self.app._update_schedule_summary()
+        self.app._update_configuration_summary()
         self.app._append_log('Horários de corte salvos.')
         self.window.destroy()
         messagebox.showinfo('Horários salvos', 'A agenda de cortes foi salva neste computador.')
